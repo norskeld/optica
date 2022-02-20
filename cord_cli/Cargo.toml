@@ -1,0 +1,8 @@
+[package]
+name = "cord_cli"
+version = "0.1.0"
+description = "Minimal, interpreted, statically typed functional programming language."
+authors = ["Vladislav Mamon <hello@vm.codes>"]
+edition = "2021"
+
+[dependencies]

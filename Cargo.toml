@@ -1,7 +1,2 @@
-[package]
-name = "cord"
-version = "0.1.0"
-description = "Minimal, interpreted, statically typed functional programming language."
-edition = "2021"
-
-[dependencies]
+[workspace]
+members = ["cord_cli", "cord_syntax"]
