@@ -1,2 +1,2 @@
 [workspace]
-members = ["cord_cli", "cord_syntax"]
+members = ["cli", "compiler"]

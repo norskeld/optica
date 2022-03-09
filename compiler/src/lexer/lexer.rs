@@ -1,0 +1,469 @@
+use nom::Err as NomError;
+use nom::error::Error as NomWrappedError;
+use nom::character;
+
+use crate::errors::{CordError, LexicalError};
+use crate::source::{SourceCode, Span};
+use super::token::{SpannedToken, Token};
+use super::parser;
+
+pub struct Lexer {
+  code: SourceCode,
+  pos: usize,
+}
+
+impl Lexer {
+  pub fn new(code: &SourceCode) -> Self {
+    Lexer {
+      code: code.clone(),
+      pos: 0,
+    }
+  }
+
+  pub fn lex(&mut self) -> Result<Vec<SpannedToken>, CordError> {
+    let (tokens, errors) = self.read_all();
+
+    match errors.len() {
+      | 0 => Ok(tokens),
+      | 1 => Err(errors.into_iter().next().unwrap()),
+      | _ => Err(CordError::Collection(errors)),
+    }
+  }
+
+  pub fn read_all(&mut self) -> (Vec<SpannedToken>, Vec<CordError>) {
+    let mut errors = vec![];
+    let mut tokens = vec![];
+
+    while self.pos < self.code.as_bytes().len() && self.byte(0) != b'\0' {
+      match self.read_next() {
+        | Ok((span, token)) => tokens.push(SpannedToken(span, token)),
+        | Err(error) => errors.push(error),
+      }
+    }
+
+    match self.read_next() {
+      | Ok((span, token)) => tokens.push(SpannedToken(span, token)),
+      | Err(error) => errors.push(error),
+    }
+
+    (tokens, errors)
+  }
+
+  pub fn read_next(&mut self) -> Result<(Span, Token), CordError> {
+    if self.pos >= self.code.len() {
+      return Ok(((self.pos as u32, self.pos as u32), Token::Eof));
+    }
+
+    let start = self.pos as u32;
+    let opt = self.trim_spaces();
+
+    if let Some(token) = opt {
+      return Ok(((start, self.pos as u32), token));
+    }
+
+    let start = self.pos as u32;
+    let remaining_bytes = &self.code.as_bytes()[self.pos..];
+    let result = parser::token(remaining_bytes);
+
+    match result {
+      | Ok((rest, token)) => {
+        // Unary minus exception.
+        let mut should_be_prefix_minus = false;
+
+        if let Token::BinaryOperator(op) = &token {
+          if op == "-" {
+            let current_char = self.code.as_bytes()[(self.pos - 1)];
+
+            let after_space = self.pos == 0 || character::is_space(current_char);
+            let before_space = character::is_space(rest[0]);
+
+            // space     (-) space      -> binary
+            // not-space (-) space      -> binary
+            // space     (-) not-space  -> unary
+            // not-space (-) not-space  -> binary
+            should_be_prefix_minus = after_space && !before_space;
+          }
+        };
+
+        let result_token = if should_be_prefix_minus {
+          Token::PrefixMinus
+        } else {
+          token
+        };
+
+        let real = self.code.as_bytes().len();
+        let consumed = (real - start as usize) - rest.len();
+
+        self.pos += consumed;
+
+        Ok(((start, self.pos as u32), result_token))
+      },
+      | Err(e) => {
+        let result = match e {
+          | NomError::Incomplete(_) => Err(CordError::Lexer(
+            self.code.clone(),
+            LexicalError::ReachedEnd {
+              pos: self.pos as u32,
+            },
+          )),
+          | NomError::Error(NomWrappedError { input, .. })
+          | NomError::Failure(NomWrappedError { input, .. }) => {
+            let new_pos = self.code.as_str().len() - input.len();
+
+            Err(CordError::Lexer(
+              self.code.clone(),
+              LexicalError::UnableToLex {
+                span: (start as u32, new_pos as u32),
+              },
+            ))
+          },
+        };
+
+        // We ignore the current character and try to tokenize the rest of characters.
+        self.pos += 1;
+
+        result
+      },
+    }
+  }
+
+  fn byte(&self, ptr: usize) -> u8 {
+    self.code.as_bytes()[self.pos + ptr]
+  }
+
+  fn trim_spaces(&mut self) -> Option<Token> {
+    let mut is_eol = false;
+    let mut pos = 0;
+
+    while self.byte(pos) == b' ' || self.byte(pos) == b'\n' {
+      is_eol |= self.byte(pos) == b'\n';
+      pos += 1;
+    }
+
+    if is_eol {
+      let mut indentation = 0;
+
+      for index in 0..pos {
+        if self.byte(pos - index - 1) == b'\n' {
+          break;
+        }
+
+        indentation += 1;
+      }
+
+      let token = Token::Indent(indentation);
+      self.pos += pos;
+
+      return Some(token);
+    }
+
+    self.pos += pos;
+    self.trim_comments()
+  }
+
+  fn trim_comments(&mut self) -> Option<Token> {
+    let offset = self.trim_multiline_comments();
+
+    if offset == 0 {
+      self.trim_line_comments()
+    } else {
+      self.pos += offset;
+      self.trim_spaces()
+    }
+  }
+
+  fn trim_multiline_comments(&mut self) -> usize {
+    let mut nesting = 0;
+    let mut offset = 0;
+
+    loop {
+      if self.byte(offset) == b'{' && self.byte(offset + 1) == b'-' {
+        nesting += 1;
+      }
+
+      if nesting == 0 {
+        break;
+      }
+
+      if self.byte(offset) == b'-' && self.byte(offset + 1) == b'}' {
+        nesting -= 1;
+        offset += 2;
+
+        if nesting == 0 {
+          break;
+        }
+      }
+
+      offset += 1;
+    }
+
+    offset
+  }
+
+  fn trim_line_comments(&mut self) -> Option<Token> {
+    // Line starts with --
+    if self.byte(0) == b'-' && self.byte(1) == b'-' {
+      let mut pos = 2;
+
+      // Line ends with \n or \r\n
+      while self.byte(pos) != b'\n' && self.byte(pos) != b'\r' && self.byte(pos) != b'\0' {
+        pos += 1;
+      }
+
+      self.pos += pos;
+      self.trim_spaces()
+    } else {
+      None
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use indoc::indoc;
+
+  use crate::source::SourceCode;
+  use crate::utils::vec::VecExt;
+  use super::Lexer;
+  use super::{SpannedToken, Token};
+
+  fn tokens(code: &str) -> Vec<Token> {
+    match Lexer::new(&SourceCode::from_str(code)).lex() {
+      | Ok(tokens) => tokens.map(|SpannedToken(_, token)| token.clone()),
+      | Err(err) => panic!("{:?}", err),
+    }
+  }
+
+  #[test]
+  fn test_tokens() {
+    let code = "identifier0,42.42";
+    let tokens = tokens(code);
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::Ident("identifier0".to_string()),
+        Token::Comma,
+        Token::LitFloat(42.42),
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn test_multiline_comment() {
+    let code = "1 + {- Block comment -} 2";
+    let tokens = tokens(code);
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::LitInt(1),
+        Token::BinaryOperator("+".to_string()),
+        Token::LitInt(2),
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn test_multiline_comment_recursive() {
+    let code = "1 + {- Nested {- block -} Comment -} 2";
+    let tokens = tokens(code);
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::LitInt(1),
+        Token::BinaryOperator("+".to_string()),
+        Token::LitInt(2),
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn test_line_comment() {
+    let code = indoc! {"
+      1 -- This is one.
+      2 -- This is two.
+      3
+    "};
+
+    let tokens = tokens(code.trim_end());
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::LitInt(1),
+        Token::Indent(0),
+        Token::LitInt(2),
+        Token::Indent(0),
+        Token::LitInt(3),
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn test_identifiers() {
+    let code = "ident, _ident, identWith0, ident_underscored";
+    let tokens = tokens(code);
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::Ident("ident".to_string()),
+        Token::Comma,
+        Token::Underscore,
+        Token::Ident("ident".to_string()),
+        Token::Comma,
+        Token::Ident("identWith0".to_string()),
+        Token::Comma,
+        Token::Ident("ident_underscored".to_string()),
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn test_indentation_token() {
+    let code = indoc! {"
+      meaning =
+        42
+
+      life =
+        42
+    "};
+
+    let tokens = tokens(code.trim_end());
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::Ident("meaning".to_string()),
+        Token::Equals,
+        Token::Indent(2),
+        Token::LitInt(42),
+        Token::Indent(0),
+        Token::Ident("life".to_string()),
+        Token::Equals,
+        Token::Indent(2),
+        Token::LitInt(42),
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn prefix_minus_edge_case() {
+    let code = "(+), (-), (*)";
+    let tokens = tokens(code);
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::LeftParen,
+        Token::BinaryOperator("+".to_string()),
+        Token::RightParen,
+        Token::Comma,
+        Token::LeftParen,
+        Token::BinaryOperator("-".to_string()),
+        Token::RightParen,
+        Token::Comma,
+        Token::LeftParen,
+        Token::BinaryOperator("*".to_string()),
+        Token::RightParen,
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn test_unary_minus() {
+    let code = "n-1";
+    let tokens = tokens(code);
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::Ident("n".to_string()),
+        Token::BinaryOperator("-".to_string()),
+        Token::LitInt(1),
+        Token::Eof
+      ]
+    );
+  }
+
+  #[test]
+  fn test_complex() {
+    let code = indoc! {"
+      module Main ((<<), composeL) where
+
+      infix left 9 (<<) = composeL
+
+      composeL : (b -> c) -> (a -> b) -> (a -> c)
+      composeL g f x = g (f x)
+    "};
+
+    let tokens = tokens(code);
+
+    assert_eq!(
+      tokens,
+      vec![
+        Token::ModuleKw,
+        Token::Ident("Main".to_string()),
+        Token::LeftParen,
+        Token::LeftParen,
+        Token::BinaryOperator("<<".to_string()),
+        Token::RightParen,
+        Token::Comma,
+        Token::Ident("composeL".to_string()),
+        Token::RightParen,
+        Token::WhereKw,
+        Token::Indent(0),
+        Token::Ident("infix".to_string()),
+        Token::Ident("left".to_string()),
+        Token::LitInt(9),
+        Token::LeftParen,
+        Token::BinaryOperator("<<".to_string()),
+        Token::RightParen,
+        Token::Equals,
+        Token::Ident("composeL".to_string()),
+        Token::Indent(0),
+        Token::Ident("composeL".to_string()),
+        Token::Colon,
+        Token::LeftParen,
+        Token::Ident("b".to_string()),
+        Token::RightArrow,
+        Token::Ident("c".to_string()),
+        Token::RightParen,
+        Token::RightArrow,
+        Token::LeftParen,
+        Token::Ident("a".to_string()),
+        Token::RightArrow,
+        Token::Ident("b".to_string()),
+        Token::RightParen,
+        Token::RightArrow,
+        Token::LeftParen,
+        Token::Ident("a".to_string()),
+        Token::RightArrow,
+        Token::Ident("c".to_string()),
+        Token::RightParen,
+        Token::Indent(0),
+        Token::Ident("composeL".to_string()),
+        Token::Ident("g".to_string()),
+        Token::Ident("f".to_string()),
+        Token::Ident("x".to_string()),
+        Token::Equals,
+        Token::Ident("g".to_string()),
+        Token::LeftParen,
+        Token::Ident("f".to_string()),
+        Token::Ident("x".to_string()),
+        Token::RightParen,
+        Token::Indent(0),
+        Token::Eof
+      ]
+    );
+  }
+}

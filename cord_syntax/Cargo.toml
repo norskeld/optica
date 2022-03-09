@@ -1,9 +1,0 @@
-[package]
-name = "cord_syntax"
-version = "0.1.0"
-description = "Cord tokenizer, parser, and AST."
-authors = ["Vladislav Mamon <hello@vm.codes>"]
-edition = "2021"
-publish = false
-
-[dependencies]

@@ -1,0 +1,15 @@
+[package]
+name = "cord_compiler"
+version = "0.1.0"
+description = "Cord compiler."
+authors = ["Vladislav Mamon <hello@vm.codes>"]
+edition = "2021"
+publish = false
+
+[dependencies]
+nom = { version = "7.1" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+indoc = "1.0"
