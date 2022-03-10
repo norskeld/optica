@@ -37,11 +37,19 @@ pub enum Token {
   Indent(u32),
 
   // Keywords.
+  LetKw,
   IfKw,
   ElseKw,
   ThenKw,
   ModuleKw,
   WhereKw,
   ImportKw,
+  InfixLeftKw,
+  InfixRightKw,
+  CaseKw,
+  OfKw,
+  InKw,
+  TypeKw,
+  DataKw,
   AsKw,
 }

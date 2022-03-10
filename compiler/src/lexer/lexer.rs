@@ -237,10 +237,9 @@ mod tests {
   #[test]
   fn test_tokens() {
     let code = "identifier0,42.42";
-    let tokens = tokens(code);
 
     assert_eq!(
-      tokens,
+      tokens(code),
       vec![
         Token::Ident("identifier0".to_string()),
         Token::Comma,
@@ -253,10 +252,9 @@ mod tests {
   #[test]
   fn test_multiline_comment() {
     let code = "1 + {- Block comment -} 2";
-    let tokens = tokens(code);
 
     assert_eq!(
-      tokens,
+      tokens(code),
       vec![
         Token::LitInt(1),
         Token::BinaryOperator("+".to_string()),
@@ -269,10 +267,9 @@ mod tests {
   #[test]
   fn test_multiline_comment_recursive() {
     let code = "1 + {- Nested {- block -} Comment -} 2";
-    let tokens = tokens(code);
 
     assert_eq!(
-      tokens,
+      tokens(code),
       vec![
         Token::LitInt(1),
         Token::BinaryOperator("+".to_string()),
@@ -290,10 +287,8 @@ mod tests {
       3
     "};
 
-    let tokens = tokens(code.trim_end());
-
     assert_eq!(
-      tokens,
+      tokens(code.trim_end()),
       vec![
         Token::LitInt(1),
         Token::Indent(0),
@@ -308,10 +303,9 @@ mod tests {
   #[test]
   fn test_identifiers() {
     let code = "ident, _ident, identWith0, ident_underscored";
-    let tokens = tokens(code);
 
     assert_eq!(
-      tokens,
+      tokens(code),
       vec![
         Token::Ident("ident".to_string()),
         Token::Comma,
@@ -336,10 +330,8 @@ mod tests {
         42
     "};
 
-    let tokens = tokens(code.trim_end());
-
     assert_eq!(
-      tokens,
+      tokens(code.trim_end()),
       vec![
         Token::Ident("meaning".to_string()),
         Token::Equals,
@@ -358,10 +350,9 @@ mod tests {
   #[test]
   fn prefix_minus_edge_case() {
     let code = "(+), (-), (*)";
-    let tokens = tokens(code);
 
     assert_eq!(
-      tokens,
+      tokens(code),
       vec![
         Token::LeftParen,
         Token::BinaryOperator("+".to_string()),
@@ -382,10 +373,9 @@ mod tests {
   #[test]
   fn test_unary_minus() {
     let code = "n-1";
-    let tokens = tokens(code);
 
     assert_eq!(
-      tokens,
+      tokens(code),
       vec![
         Token::Ident("n".to_string()),
         Token::BinaryOperator("-".to_string()),
@@ -400,17 +390,25 @@ mod tests {
     let code = indoc! {"
       module Main ((<<), composeL) where
 
-      infix left 9 (<<) = composeL
+      data Bool = True | False
 
-      composeL : (b -> c) -> (a -> b) -> (a -> c)
-      composeL g f x = g (f x)
+      type Int = Int
+      type Float = Float
+
+      infixr 0 (|>) = apR
+      infixl 0 (<|) = apL
+
+      apR : a -> (a -> b) -> b
+      apR x f = f x
+
+      apL : (a -> b) -> a -> b
+      apL f x = f x
     "};
 
-    let tokens = tokens(code);
-
     assert_eq!(
-      tokens,
+      tokens(code),
       vec![
+        // Module.
         Token::ModuleKw,
         Token::Ident("Main".to_string()),
         Token::LeftParen,
@@ -421,46 +419,84 @@ mod tests {
         Token::Ident("composeL".to_string()),
         Token::RightParen,
         Token::WhereKw,
+        // Data.
         Token::Indent(0),
-        Token::Ident("infix".to_string()),
-        Token::Ident("left".to_string()),
-        Token::LitInt(9),
+        Token::DataKw,
+        Token::Ident("Bool".to_string()),
+        Token::Equals,
+        Token::Ident("True".to_string()),
+        Token::Pipe,
+        Token::Ident("False".to_string()),
+        // Type alias.
+        Token::Indent(0),
+        Token::TypeKw,
+        Token::Ident("Int".to_string()),
+        Token::Equals,
+        Token::Ident("Int".to_string()),
+        // Type alias.
+        Token::Indent(0),
+        Token::TypeKw,
+        Token::Ident("Float".to_string()),
+        Token::Equals,
+        Token::Ident("Float".to_string()),
+        // Infix right.
+        Token::Indent(0),
+        Token::InfixRightKw,
+        Token::LitInt(0),
         Token::LeftParen,
-        Token::BinaryOperator("<<".to_string()),
+        Token::BinaryOperator("|>".to_string()),
         Token::RightParen,
         Token::Equals,
-        Token::Ident("composeL".to_string()),
+        Token::Ident("apR".to_string()),
+        // Infix left.
         Token::Indent(0),
-        Token::Ident("composeL".to_string()),
+        Token::InfixLeftKw,
+        Token::LitInt(0),
+        Token::LeftParen,
+        Token::BinaryOperator("<|".to_string()),
+        Token::RightParen,
+        Token::Equals,
+        Token::Ident("apL".to_string()),
+        // Function definition.
+        Token::Indent(0),
+        Token::Ident("apR".to_string()),
+        Token::Colon,
+        Token::Ident("a".to_string()),
+        Token::RightArrow,
+        Token::LeftParen,
+        Token::Ident("a".to_string()),
+        Token::RightArrow,
+        Token::Ident("b".to_string()),
+        Token::RightParen,
+        Token::RightArrow,
+        Token::Ident("b".to_string()),
+        Token::Indent(0),
+        Token::Ident("apR".to_string()),
+        Token::Ident("x".to_string()),
+        Token::Ident("f".to_string()),
+        Token::Equals,
+        Token::Ident("f".to_string()),
+        Token::Ident("x".to_string()),
+        // Function definition.
+        Token::Indent(0),
+        Token::Ident("apL".to_string()),
         Token::Colon,
         Token::LeftParen,
-        Token::Ident("b".to_string()),
-        Token::RightArrow,
-        Token::Ident("c".to_string()),
-        Token::RightParen,
-        Token::RightArrow,
-        Token::LeftParen,
         Token::Ident("a".to_string()),
         Token::RightArrow,
         Token::Ident("b".to_string()),
         Token::RightParen,
         Token::RightArrow,
-        Token::LeftParen,
         Token::Ident("a".to_string()),
         Token::RightArrow,
-        Token::Ident("c".to_string()),
-        Token::RightParen,
+        Token::Ident("b".to_string()),
         Token::Indent(0),
-        Token::Ident("composeL".to_string()),
-        Token::Ident("g".to_string()),
+        Token::Ident("apL".to_string()),
         Token::Ident("f".to_string()),
         Token::Ident("x".to_string()),
         Token::Equals,
-        Token::Ident("g".to_string()),
-        Token::LeftParen,
         Token::Ident("f".to_string()),
         Token::Ident("x".to_string()),
-        Token::RightParen,
         Token::Indent(0),
         Token::Eof
       ]

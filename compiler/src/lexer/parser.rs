@@ -97,12 +97,20 @@ fn identifier(input: &[u8]) -> ParseResult<'_, Token> {
       let bytes = ident.as_bytes();
 
       match bytes {
+        | b"let" => Token::LetKw,
+        | b"in" => Token::InKw,
         | b"if" => Token::IfKw,
         | b"else" => Token::ElseKw,
         | b"then" => Token::ThenKw,
         | b"module" => Token::ModuleKw,
         | b"where" => Token::WhereKw,
         | b"import" => Token::ImportKw,
+        | b"infixl" => Token::InfixLeftKw,
+        | b"infixr" => Token::InfixRightKw,
+        | b"case" => Token::CaseKw,
+        | b"of" => Token::OfKw,
+        | b"type" => Token::TypeKw,
+        | b"data" => Token::DataKw,
         | b"as" => Token::AsKw,
         | _ => Token::Ident(ident),
       }
