@@ -4,7 +4,7 @@ use nom::character;
 
 use crate::errors::{CordError, LexicalError};
 use crate::source::{SourceCode, Span};
-use super::token::{SpannedToken, Token};
+use super::{SpannedToken, Token};
 use super::parser;
 
 pub struct Lexer {

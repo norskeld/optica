@@ -1,4 +1,7 @@
-pub mod helpers;
-pub mod lexer;
+pub use lexer::*;
+pub use token::*;
+
+mod helpers;
+mod lexer;
 pub mod parser;
-pub mod token;
+mod token;

@@ -8,7 +8,7 @@ use nom::sequence::*;
 
 use crate::number::Int;
 use crate::utils;
-use super::token::Token;
+use super::Token;
 use super::helpers;
 
 pub type ParseResult<'a, T> = IResult<&'a [u8], T>;
