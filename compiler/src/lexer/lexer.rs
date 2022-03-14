@@ -72,9 +72,10 @@ impl Lexer {
 
         if let Token::BinaryOperator(op) = &token {
           if op == "-" {
-            let current_char = self.code.as_bytes()[(self.pos - 1)];
+            let cursor = self.pos.checked_sub(1).unwrap_or(0);
+            let byte = self.code.as_bytes()[cursor];
 
-            let after_space = self.pos == 0 || character::is_space(current_char);
+            let after_space = cursor == 0 || character::is_space(byte);
             let before_space = character::is_space(rest[0]);
 
             // space     (-) space      -> binary
