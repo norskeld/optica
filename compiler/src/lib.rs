@@ -6,5 +6,4 @@ pub(crate) mod errors;
 pub(crate) mod lexer;
 pub(crate) mod number;
 pub(crate) mod source;
-#[macro_use]
 pub(crate) mod utils;

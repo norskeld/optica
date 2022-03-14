@@ -36,13 +36,13 @@ impl Lexer {
 
     while self.pos < self.code.as_bytes().len() && self.byte(0) != b'\0' {
       match self.read_next() {
-        | Ok((span, token)) => tokens.push(SpannedToken(span, token)),
+        | Ok((span, token)) => tokens.push(SpannedToken { span, token }),
         | Err(error) => errors.push(error),
       }
     }
 
     match self.read_next() {
-      | Ok((span, token)) => tokens.push(SpannedToken(span, token)),
+      | Ok((span, token)) => tokens.push(SpannedToken { span, token }),
       | Err(error) => errors.push(error),
     }
 
@@ -230,7 +230,7 @@ mod tests {
 
   fn tokens(code: &str) -> Vec<Token> {
     match Lexer::new(&SourceCode::from_str(code)).lex() {
-      | Ok(tokens) => tokens.map(|SpannedToken(_, token)| token.clone()),
+      | Ok(tokens) => tokens.map(|SpannedToken { token, .. }| token.clone()),
       | Err(err) => panic!("{:?}", err),
     }
   }

@@ -1,3 +1,5 @@
+//! Testing utilities for lexer.
+
 #[macro_export]
 macro_rules! assert_ok {
   ($result: expr, $token: expr) => {

@@ -2,7 +2,10 @@ use crate::number::{Float, Int};
 use crate::source::Span;
 
 #[derive(PartialEq, Debug, Clone)]
-pub struct SpannedToken(pub Span, pub Token);
+pub struct SpannedToken {
+  pub span: Span,
+  pub token: Token,
+}
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Token {
