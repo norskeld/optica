@@ -122,7 +122,7 @@ fn upper_identifier(input: &[u8]) -> ParseResult<'_, Token> {
   map(
     tuple((upper, many0(identifier_char))),
     |(head, tail): (char, Vec<char>)| {
-      Token::Ident(
+      Token::UpperIdent(
         utils::vec::create_vec(head, tail)
           .into_iter()
           .collect::<String>(),

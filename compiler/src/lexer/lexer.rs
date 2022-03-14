@@ -410,7 +410,7 @@ mod tests {
       vec![
         // Module.
         Token::ModuleKw,
-        Token::Ident("Main".to_string()),
+        Token::UpperIdent("Main".to_string()),
         Token::LeftParen,
         Token::LeftParen,
         Token::BinaryOperator("<<".to_string()),
@@ -422,23 +422,23 @@ mod tests {
         // Data.
         Token::Indent(0),
         Token::DataKw,
-        Token::Ident("Bool".to_string()),
+        Token::UpperIdent("Bool".to_string()),
         Token::Equals,
-        Token::Ident("True".to_string()),
+        Token::UpperIdent("True".to_string()),
         Token::Pipe,
-        Token::Ident("False".to_string()),
+        Token::UpperIdent("False".to_string()),
         // Type alias.
         Token::Indent(0),
         Token::TypeKw,
-        Token::Ident("Int".to_string()),
+        Token::UpperIdent("Int".to_string()),
         Token::Equals,
-        Token::Ident("Int".to_string()),
+        Token::UpperIdent("Int".to_string()),
         // Type alias.
         Token::Indent(0),
         Token::TypeKw,
-        Token::Ident("Float".to_string()),
+        Token::UpperIdent("Float".to_string()),
         Token::Equals,
-        Token::Ident("Float".to_string()),
+        Token::UpperIdent("Float".to_string()),
         // Infix right.
         Token::Indent(0),
         Token::InfixRightKw,
