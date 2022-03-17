@@ -15,7 +15,7 @@ pub enum Expression {
   If(Span, Box<Expression>, Box<Expression>, Box<Expression>),
   Lambda(Span, Vec<Pattern>, Box<Expression>),
   Application(Span, Box<Expression>, Box<Expression>),
-  OpChain(Span, Vec<Expression>, Vec<String>),
+  OperatorChain(Span, Vec<Expression>, Vec<String>),
   Ref(Span, String),
   QualifiedRef(Span, Vec<String>, String),
 }
@@ -68,8 +68,8 @@ impl PartialEq for Expression {
           false
         }
       },
-      | Expression::OpChain(_, lhs_exprs, lhs_ops) => {
-        if let Expression::OpChain(_, rhs_exprs, rhs_ops) = other {
+      | Expression::OperatorChain(_, lhs_exprs, lhs_ops) => {
+        if let Expression::OperatorChain(_, rhs_exprs, rhs_ops) = other {
           lhs_exprs == rhs_exprs && lhs_ops == rhs_ops
         } else {
           false
@@ -136,6 +136,7 @@ impl PartialEq for Literal {
 pub enum Pattern {
   Var(Span, String),
   Adt(Span, String, Vec<Pattern>),
+  BinaryOperator(Span, String, Box<Pattern>, Box<Pattern>),
   Alias(Span, Box<Pattern>, String),
   Wildcard(Span),
   Unit(Span),
@@ -144,6 +145,24 @@ pub enum Pattern {
   LitInt(Span, Int),
   LitString(Span, String),
   LitChar(Span, char),
+}
+
+impl Pattern {
+  pub fn span(&self) -> Span {
+    *match self {
+      | Pattern::Var(span, _) => span,
+      | Pattern::Adt(span, _, _) => span,
+      | Pattern::BinaryOperator(span, _, _, _) => span,
+      | Pattern::Alias(span, _, _) => span,
+      | Pattern::Wildcard(span) => span,
+      | Pattern::Unit(span) => span,
+      | Pattern::Tuple(span, _) => span,
+      | Pattern::List(span, _) => span,
+      | Pattern::LitInt(span, _) => span,
+      | Pattern::LitString(span, _) => span,
+      | Pattern::LitChar(span, _) => span,
+    }
+  }
 }
 
 /// Custom [PartialEq] implementation because we have derived [PartialEq] for [Definition].
@@ -208,6 +227,13 @@ impl PartialEq for Pattern {
       | Pattern::Alias(_, lhs_pattern, lhs_name) => {
         if let Pattern::Alias(_, rhs_pattern, rhs_name) = other {
           lhs_pattern == rhs_pattern && lhs_name == rhs_name
+        } else {
+          false
+        }
+      },
+      | Pattern::BinaryOperator(_, lhs_op, lhs_l, lhs_r) => {
+        if let Pattern::BinaryOperator(_, rhs_op, rhs_l, rhs_r) = other {
+          lhs_op == rhs_op && lhs_l == rhs_l && lhs_r == rhs_r
         } else {
           false
         }

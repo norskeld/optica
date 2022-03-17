@@ -20,6 +20,10 @@ impl Lexer {
     }
   }
 
+  pub fn source(&self) -> SourceCode {
+    self.code.clone()
+  }
+
   pub fn lex(&mut self) -> Result<Vec<SpannedToken>, CordError> {
     let (tokens, errors) = self.read_all();
 
@@ -349,7 +353,7 @@ mod tests {
   }
 
   #[test]
-  fn prefix_minus_edge_case() {
+  fn test_binop_minus() {
     let code = "(+), (-), (*)";
 
     assert_eq!(
@@ -372,7 +376,7 @@ mod tests {
   }
 
   #[test]
-  fn test_unary_minus() {
+  fn test_binop_minus_edge() {
     let code = "n-1";
 
     assert_eq!(
