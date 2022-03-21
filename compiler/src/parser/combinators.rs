@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::errors::ParseError;
 use crate::lexer::Token;
+use crate::number::Int;
 use crate::source::Input;
 
 pub fn expect(expected: Token, input: Input) -> Result<Input, ParseError> {
@@ -48,6 +49,19 @@ pub fn expect_indent(expected: u32, input: Input) -> Result<Input, ParseError> {
   }
 
   Ok(input)
+}
+
+pub fn expect_int(input: Input) -> Result<(Int, Input), ParseError> {
+  if let Token::LitInt(value) = input.read() {
+    Ok((value, input.next()))
+  } else {
+    let found = input.read();
+
+    Err(ParseError::ExpectedInt {
+      span: input.span(),
+      found,
+    })
+  }
 }
 
 pub fn expect_ident(input: Input) -> Result<(String, Input), ParseError> {

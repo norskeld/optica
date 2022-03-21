@@ -2,12 +2,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::ast::expression::{Expression, Pattern};
 use crate::source::Span;
+use crate::number::Int;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum Statement {
   Alias(String, Vec<String>, Type),
   Adt(String, Vec<String>, Vec<(Span, String, Vec<Type>)>),
-  FunctionDef(FunctionDef),
+  Function(Function),
+  Infix(InfixDirection, Int, String, String),
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub enum InfixDirection {
+  Left,
+  Right,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Hash)]
@@ -27,7 +35,7 @@ pub struct TypeAlias {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct FunctionDef {
+pub struct Function {
   pub header: Option<Type>,
   pub name: String,
   pub patterns: Vec<Pattern>,

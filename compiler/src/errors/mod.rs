@@ -46,6 +46,10 @@ pub enum ParseError {
     span: Span,
     found: Token,
   },
+  ExpectedQualifiedName {
+    span: Span,
+    found: Token,
+  },
   UnmatchedToken {
     span: Span,
     found: Token,
