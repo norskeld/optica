@@ -86,6 +86,36 @@ pub fn expect_upper_ident(input: Input) -> Result<(String, Input), ParseError> {
   }
 }
 
+pub fn expect_upper_chain(input: Input) -> Result<(String, Input), ParseError> {
+  let (name, mut input) = expect_upper_ident(input)?;
+  let mut names = vec![name];
+
+  while let Token::Dot = input.read() {
+    let (name, rest) = expect_upper_ident(input.next())?;
+
+    names.push(name);
+    input = rest;
+  }
+
+  let complete_name = if names.len() == 1 {
+    names.into_iter().next().unwrap()
+  } else {
+    let mut names_iter = names.iter();
+    let mut acc = String::new();
+
+    acc.push_str(names_iter.next().unwrap());
+
+    for name in names_iter {
+      acc.push('.');
+      acc.push_str(name);
+    }
+
+    acc
+  };
+
+  Ok((complete_name, input))
+}
+
 pub fn expect_binary_operator(input: Input) -> Result<(String, Input), ParseError> {
   if let Token::BinaryOperator(name) = input.read() {
     Ok((name, input.next()))

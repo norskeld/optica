@@ -29,7 +29,8 @@ pub enum ModuleExports {
 pub enum ModuleExport {
   Adt(String, AdtExports),
   Type(String),
-  Definition(String),
+  Function(String),
+  BinaryOperator(String),
 }
 
 /// Exported variants of ADT. Either selected ones or all.
