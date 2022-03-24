@@ -1,4 +1,4 @@
-use crate::ast::Pattern;
+use crate::ast::untyped::Pattern;
 use crate::errors::ParseError;
 use crate::lexer::Token;
 use crate::source::Input;
@@ -138,7 +138,7 @@ fn parse_pattern_base(input: Input, adt: bool) -> Result<(Pattern, Input), Parse
 
 #[cfg(test)]
 mod tests {
-  use crate::parser::testing;
+  use super::super::testing;
   use super::*;
 
   #[test]

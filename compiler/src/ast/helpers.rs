@@ -1,5 +1,5 @@
 use crate::source::Span;
-use super::Expression;
+use super::untyped::Expression;
 
 pub fn span(expression: &Expression) -> Span {
   *match expression {

@@ -1,4 +1,4 @@
-use crate::ast::Type;
+use crate::ast::untyped::Type;
 use crate::errors::ParseError;
 use crate::lexer::Token;
 use crate::source::Input;
@@ -136,7 +136,7 @@ fn create_qualified_name(path: &[String], name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-  use crate::parser::testing;
+  use super::super::testing;
   use super::*;
 
   #[test]

@@ -1,4 +1,4 @@
-use crate::ast::{Expression, Module, Pattern, Statement, Type};
+use crate::ast::untyped::{Expression, Module, Pattern, Statement, Type};
 use crate::errors::CordError;
 use crate::lexer::Lexer;
 use crate::source::{Input, SourceCode};

@@ -1,4 +1,4 @@
-use crate::ast::{Function, InfixDirection, Statement, Type};
+use crate::ast::untyped::{Function, InfixDirection, Statement, Type};
 use crate::errors::ParseError;
 use crate::lexer::Token;
 use crate::source::{Input, Span};
@@ -108,8 +108,8 @@ fn parse_adt_branch(input: Input) -> Result<((Span, String, Vec<Type>), Input), 
 mod tests {
   use indoc::indoc;
 
-  use crate::ast::{Expression, Literal, Pattern};
-  use crate::parser::testing;
+  use crate::ast::untyped::{Expression, Literal, Pattern};
+  use super::super::testing;
   use super::*;
 
   #[test]

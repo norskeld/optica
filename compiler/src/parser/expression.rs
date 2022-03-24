@@ -1,4 +1,5 @@
-use crate::ast::{self, Expression, Literal};
+use crate::ast;
+use crate::ast::untyped::{Expression, Literal};
 use crate::errors::ParseError;
 use crate::lexer::Token;
 use crate::source::Input;
@@ -225,8 +226,8 @@ fn create_binary_operator_chain(first: Expression, rest: Vec<(String, Expression
 mod tests {
   use indoc::indoc;
 
-  use crate::ast::Pattern;
-  use crate::parser::testing;
+  use crate::ast::untyped::Pattern;
+  use super::super::testing;
   use super::*;
 
   #[test]

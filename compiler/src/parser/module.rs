@@ -1,4 +1,6 @@
-use crate::ast::{AdtExports, Module, ModuleExport, ModuleExports, ModuleHeader, ModuleImport};
+use crate::ast::untyped::{
+  AdtExports, Module, ModuleExport, ModuleExports, ModuleHeader, ModuleImport,
+};
 use crate::errors::ParseError;
 use crate::lexer::Token;
 use crate::source::Input;
@@ -238,8 +240,8 @@ fn parse_export(input: Input) -> Result<(ModuleExport, Input), ParseError> {
 mod tests {
   use indoc::indoc;
 
-  use crate::ast::{AdtExports, Expression, Function, Literal, Pattern, Statement};
-  use crate::parser::testing;
+  use crate::ast::untyped::{AdtExports, Expression, Function, Literal, Pattern, Statement};
+  use super::super::testing;
   use super::*;
 
   #[test]
