@@ -1,7 +1,6 @@
 [package]
-name = "cord_compiler"
+name = "compiler"
 version = "0.1.0"
-description = "Cord compiler."
 authors = ["Vladislav Mamon <hello@vm.codes>"]
 edition = "2021"
 publish = false

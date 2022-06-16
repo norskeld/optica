@@ -1,4 +1,4 @@
-use crate::number::{Float, Int};
+use crate::ast::{Float, Int};
 
 pub fn parse_int(radix: u32, digits: Vec<char>) -> Int {
   let src: String = digits.into_iter().collect();

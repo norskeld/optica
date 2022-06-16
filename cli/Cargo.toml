@@ -1,8 +1,11 @@
 [package]
-name = "cord_cli"
+name = "cli"
 version = "0.1.0"
 description = "Minimal, interpreted, statically typed functional programming language."
 authors = ["Vladislav Mamon <hello@vm.codes>"]
 edition = "2021"
 
 [dependencies]
+compiler = { path = "../compiler" }
+
+clap = { version = "3.2.5", features = ["cargo", "derive"] }

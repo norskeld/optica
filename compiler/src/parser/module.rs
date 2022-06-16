@@ -201,7 +201,7 @@ fn parse_export(input: Input) -> Result<(ModuleExport, Input), ParseError> {
             | Token::DoubleDot => (AdtExports::All, input.next()),
             | _ => {
               let (variants, input) = combinators::comma1(&combinators::expect_upper_ident, input)?;
-              (AdtExports::Variants(variants), input)
+              (AdtExports::Just(variants), input)
             },
           };
 
@@ -240,7 +240,7 @@ fn parse_export(input: Input) -> Result<(ModuleExport, Input), ParseError> {
 mod tests {
   use indoc::indoc;
 
-  use crate::ast::untyped::{AdtExports, Expression, Function, Literal, Pattern, Statement};
+  use crate::ast::untyped::{AdtExports, Definition, Expression, Literal, Pattern, Statement};
   use super::super::testing;
   use super::*;
 
@@ -334,7 +334,7 @@ mod tests {
       Module {
         header: None,
         imports: vec![],
-        statements: vec![Statement::Function(Function {
+        statements: vec![Statement::Function(Definition {
           header: None,
           name: "func".to_string(),
           patterns: vec![Pattern::Var((0, 0), "a".to_string())],
@@ -430,7 +430,7 @@ mod tests {
               ModuleExport::Adt("Sides".to_string(), AdtExports::All),
               ModuleExport::Adt(
                 "UpDown".to_string(),
-                AdtExports::Variants(vec!["Up".to_string(), "Down".to_string()]),
+                AdtExports::Just(vec!["Up".to_string(), "Down".to_string()]),
               ),
               ModuleExport::Function("map".to_string()),
             ])),

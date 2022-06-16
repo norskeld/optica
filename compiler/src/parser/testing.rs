@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 
-use crate::errors::{CordError, ParseError};
+use crate::errors::{LangError, ParseError};
 use crate::source::{Input, SourceCode};
 use crate::lexer::Lexer;
 use super::combinators;
@@ -19,7 +19,7 @@ where
   F: Fn(Input) -> Result<(T, Input), ParseError>,
 {
   let input = create_input(code);
-  let result = combinators::complete(&func, input.clone());
+  let result = combinators::complete(&func, input);
 
   match result {
     | Ok(res) => {
@@ -29,7 +29,7 @@ where
     | Err(error) => {
       println!(
         "Error: {:?}\n",
-        CordError::Parser(SourceCode::from_str(code), error)
+        LangError::Parser(SourceCode::from_str(code), error)
       );
 
       panic!();
@@ -42,7 +42,7 @@ where
   F: Fn(Input) -> Result<(T, Input), ParseError>,
 {
   let input = create_input(code);
-  let result = combinators::complete(&func, input.clone());
+  let result = combinators::complete(&func, input);
 
   match result {
     | Ok(res) => {
@@ -51,7 +51,7 @@ where
     | Err(error) => {
       println!(
         "Error: {:?}\n",
-        CordError::Parser(SourceCode::from_str(code), error)
+        LangError::Parser(SourceCode::from_str(code), error)
       );
 
       panic!();
@@ -64,7 +64,7 @@ where
   F: Fn(Input) -> Result<(T, Input), ParseError>,
 {
   let input = create_input(code);
-  let result = combinators::complete(&func, input.clone());
+  let result = combinators::complete(&func, input);
 
   match result {
     | Ok(res) => {
@@ -74,7 +74,7 @@ where
     | Err(error) => {
       println!(
         "Error: {:?}\n",
-        CordError::Parser(SourceCode::from_str(code), error)
+        LangError::Parser(SourceCode::from_str(code), error)
       );
     },
   }

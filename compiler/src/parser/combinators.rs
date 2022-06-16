@@ -1,8 +1,8 @@
 use std::fmt;
 
+use crate::ast::Int;
 use crate::errors::ParseError;
 use crate::lexer::Token;
-use crate::number::Int;
 use crate::source::Input;
 
 pub fn expect(expected: Token, input: Input) -> Result<Input, ParseError> {

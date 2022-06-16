@@ -4,15 +4,20 @@ use std::sync::Arc;
 /// Padding to detect the end of code while tokenizing.
 pub const PADDING: usize = 2;
 
-/// Identifies a position in the stream of chars in the source code.
-pub type Location = u32;
-
 /// Span element `(start, end)`.
-pub type Span = (Location, Location);
+pub type Span = (u32, u32);
 
 /// Source code container to avoid large files duplication.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SourceCode(Arc<SourceContainer>);
+
+/// Source file container.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceFile {
+  pub name: String,
+  pub path: String,
+  pub source: SourceCode,
+}
 
 /// Internal source code container, used for ergonomics.
 #[derive(Clone, Debug, PartialEq)]

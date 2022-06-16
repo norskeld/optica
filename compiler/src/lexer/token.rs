@@ -1,4 +1,4 @@
-use crate::number::{Float, Int};
+use crate::ast::{Float, Int};
 use crate::source::Span;
 
 #[derive(PartialEq, Debug, Clone)]

@@ -1,8 +1,10 @@
-pub mod combinators;
-pub mod expression;
-pub mod module;
-pub mod parser;
-pub mod pattern;
-pub mod statement;
-pub mod testing;
-pub mod types;
+pub use parser::*;
+
+mod combinators;
+mod expression;
+mod module;
+mod parser;
+mod pattern;
+mod statement;
+mod testing;
+mod types;

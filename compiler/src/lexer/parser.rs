@@ -6,7 +6,7 @@ use nom::combinator::*;
 use nom::multi::*;
 use nom::sequence::*;
 
-use crate::number::Int;
+use crate::ast::Int;
 use crate::utils;
 use super::Token;
 use super::helpers;

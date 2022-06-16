@@ -2,8 +2,8 @@ use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 
-use crate::number::{Float, Int};
 use crate::source::Span;
+use super::{Float, Int};
 
 /// Unevaluated expression tree.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -18,6 +18,23 @@ pub enum Expression {
   OperatorChain(Span, Vec<Expression>, Vec<String>),
   Ref(Span, String),
   QualifiedRef(Span, Vec<String>, String),
+}
+
+impl Expression {
+  pub fn get_span(&self) -> Span {
+    *match self {
+      | Expression::Unit(span) => span,
+      | Expression::Literal(span, _) => span,
+      | Expression::Tuple(span, _) => span,
+      | Expression::List(span, _) => span,
+      | Expression::If(span, _, _, _) => span,
+      | Expression::Lambda(span, _, _) => span,
+      | Expression::Application(span, _, _) => span,
+      | Expression::OperatorChain(span, _, _) => span,
+      | Expression::Ref(span, _) => span,
+      | Expression::QualifiedRef(span, _, _) => span,
+    }
+  }
 }
 
 impl PartialEq for Expression {
@@ -276,7 +293,7 @@ pub enum ModuleExport {
 /// Exported variants of ADT. Either selected ones or all.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum AdtExports {
-  Variants(Vec<String>),
+  Just(Vec<String>),
   All,
 }
 
@@ -292,8 +309,9 @@ pub struct ModuleImport {
 pub enum Statement {
   Alias(String, Vec<String>, Type),
   Adt(String, Vec<String>, Vec<(Span, String, Vec<Type>)>),
-  Function(Function),
+  Function(Definition),
   Infix(InfixDirection, Int, String, String),
+  Port(Span, String, Type),
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -319,7 +337,7 @@ pub struct TypeAlias {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct Function {
+pub struct Definition {
   pub header: Option<Type>,
   pub name: String,
   pub patterns: Vec<Pattern>,

@@ -1,4 +1,4 @@
-use crate::ast::untyped::{Function, InfixDirection, Statement, Type};
+use crate::ast::untyped::{Definition, InfixDirection, Statement, Type};
 use crate::errors::ParseError;
 use crate::lexer::Token;
 use crate::source::{Input, Span};
@@ -47,7 +47,7 @@ pub fn parse_statement(input: Input) -> Result<(Statement, Input), ParseError> {
   Ok((stmt, input))
 }
 
-pub fn parse_definition(indent: u32, input: Input) -> Result<(Function, Input), ParseError> {
+pub fn parse_definition(indent: u32, input: Input) -> Result<(Definition, Input), ParseError> {
   let (name, input) = combinators::expect_ident(input)?;
 
   let (header, input) = match input.read() {
@@ -69,7 +69,7 @@ pub fn parse_definition(indent: u32, input: Input) -> Result<(Function, Input), 
   let (expression, input) = expression::parse_expr(input)?;
 
   Ok((
-    Function {
+    Definition {
       header,
       name,
       patterns,
@@ -222,7 +222,7 @@ mod tests {
     testing::assert_eq(
       parse_statement,
       "unit x = ()",
-      Statement::Function(Function {
+      Statement::Function(Definition {
         header: None,
         name: "unit".to_string(),
         patterns: vec![Pattern::Var((5, 6), "x".to_string())],
@@ -236,7 +236,7 @@ mod tests {
     testing::assert_eq(
       parse_statement,
       "meaningOfLife = 42",
-      Statement::Function(Function {
+      Statement::Function(Definition {
         header: None,
         name: "meaningOfLife".to_string(),
         patterns: vec![],
@@ -255,7 +255,7 @@ mod tests {
     testing::assert_eq(
       parse_statement,
       code,
-      Statement::Function(Function {
+      Statement::Function(Definition {
         header: Some(Type::Tag("Int".to_string(), vec![])),
         name: "meaningOfLife".to_string(),
         patterns: vec![],

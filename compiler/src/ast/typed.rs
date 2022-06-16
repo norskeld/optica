@@ -5,21 +5,68 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::errors::CordError;
+use crate::errors::LangError;
 use crate::runtime::Interpreter;
-use crate::number::{Float, Int};
 use crate::source::Span;
-use super::untyped::{Literal, Type};
+use super::untyped::{Literal, Type, TypeAlias};
+use super::{Float, Int};
+
+/// Unique id for fast comparison between functions.
+pub type FunctionId = usize;
+
+/// Built-in function alias.
+pub type BuiltinFunction = fn(&mut Interpreter, &[Value]) -> Result<Value, LangError>;
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Declaration {
+  Alias(TypeAlias),
+  Adt(String, Arc<Adt>),
+  Definition(String, TypedDefinition),
+  Infix(String, String, Type),
+  Port(String, Type),
+}
 
 #[derive(Debug, Clone)]
 pub enum TypedExpression {
   Const(Span, Type, Value),
-  Tuple(Span, Type, Vec<Self>),
-  List(Span, Type, Vec<Self>),
+  Tuple(Span, Type, Vec<TypedExpression>),
+  List(Span, Type, Vec<TypedExpression>),
   Ref(Span, Type, String),
-  If(Span, Type, Box<Self>, Box<Self>, Box<Self>),
-  Lambda(Span, Type, Vec<TypedPattern>, Box<Self>),
-  Application(Span, Type, Box<Self>, Box<Self>),
+  If(
+    Span,
+    Type,
+    Box<TypedExpression>,
+    Box<TypedExpression>,
+    Box<TypedExpression>,
+  ),
+  Lambda(Span, Type, Vec<TypedPattern>, Box<TypedExpression>),
+  Application(Span, Type, Box<TypedExpression>, Box<TypedExpression>),
+}
+
+impl TypedExpression {
+  pub fn get_span(&self) -> Span {
+    *match self {
+      | TypedExpression::Const(span, _, _) => span,
+      | TypedExpression::Tuple(span, _, _) => span,
+      | TypedExpression::List(span, _, _) => span,
+      | TypedExpression::Ref(span, _, _) => span,
+      | TypedExpression::If(span, _, _, _, _) => span,
+      | TypedExpression::Lambda(span, _, _, _) => span,
+      | TypedExpression::Application(span, _, _, _) => span,
+    }
+  }
+
+  pub fn get_type(&self) -> Type {
+    match self {
+      | TypedExpression::Const(_, ty, _) => ty.clone(),
+      | TypedExpression::Tuple(_, ty, _) => ty.clone(),
+      | TypedExpression::List(_, ty, _) => ty.clone(),
+      | TypedExpression::Ref(_, ty, _) => ty.clone(),
+      | TypedExpression::If(_, ty, _, _, _) => ty.clone(),
+      | TypedExpression::Lambda(_, ty, _, _) => ty.clone(),
+      | TypedExpression::Application(_, ty, _, _) => ty.clone(),
+    }
+  }
 }
 
 impl PartialEq for TypedExpression {
@@ -80,7 +127,7 @@ impl PartialEq for TypedExpression {
 
 /// A typed function definition.
 #[derive(Debug, PartialEq, Clone)]
-pub struct TypedFunction {
+pub struct TypedDefinition {
   pub header: Type,
   pub name: String,
   pub patterns: Vec<TypedPattern>,
@@ -91,23 +138,51 @@ pub struct TypedFunction {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub enum TypedPattern {
   Var(Span, Type, String),
-  Adt(Span, Type, Type, Vec<Self>),
-  Alias(Span, Type, Box<Self>, String),
+  Adt(Span, Type, Type, Vec<TypedPattern>),
+  Alias(Span, Type, Box<TypedPattern>, String),
   Wildcard(Span),
   Unit(Span),
-  Tuple(Span, Type, Vec<Self>),
-  List(Span, Type, Vec<Self>),
-  BinaryOperator(Span, Type, String, Box<Self>, Box<Self>),
+  Tuple(Span, Type, Vec<TypedPattern>),
+  List(Span, Type, Vec<TypedPattern>),
+  BinaryOperator(Span, Type, String, Box<TypedPattern>, Box<TypedPattern>),
   LitInt(Span, Int),
   LitString(Span, String),
   LitChar(Span, char),
 }
 
-/// Unique id for fast comparison between functions.
-pub type FunctionId = usize;
+impl TypedPattern {
+  pub fn get_span(&self) -> Span {
+    *match self {
+      | TypedPattern::Unit(span) => span,
+      | TypedPattern::Var(span, _, _) => span,
+      | TypedPattern::Adt(span, _, _, _) => span,
+      | TypedPattern::Alias(span, _, _, _) => span,
+      | TypedPattern::Wildcard(span) => span,
+      | TypedPattern::Tuple(span, _, _) => span,
+      | TypedPattern::List(span, _, _) => span,
+      | TypedPattern::BinaryOperator(span, _, _, _, _) => span,
+      | TypedPattern::LitInt(span, _) => span,
+      | TypedPattern::LitString(span, _) => span,
+      | TypedPattern::LitChar(span, _) => span,
+    }
+  }
 
-/// Built-in function alias.
-pub type BuiltinFunction = fn(&mut Interpreter, &[Value]) -> Result<Value, CordError>;
+  pub fn get_type(&self) -> Type {
+    match self {
+      | TypedPattern::Unit(_) => Type::Unit,
+      | TypedPattern::Var(_, ty, _) => ty.clone(),
+      | TypedPattern::Adt(_, ty, _, _) => ty.clone(),
+      | TypedPattern::Alias(_, ty, _, _) => ty.clone(),
+      | TypedPattern::Wildcard(_) => Type::Var("_".to_string()),
+      | TypedPattern::Tuple(_, ty, _) => ty.clone(),
+      | TypedPattern::List(_, ty, _) => ty.clone(),
+      | TypedPattern::BinaryOperator(_, ty, _, _, _) => ty.clone(),
+      | TypedPattern::LitInt(_, _) => Type::Tag("Int".to_string(), vec![]),
+      | TypedPattern::LitString(_, _) => Type::Tag("String".to_string(), vec![]),
+      | TypedPattern::LitChar(_, _) => Type::Tag("Char".to_string(), vec![]),
+    }
+  }
+}
 
 /// Represents the final value after the evaluation of an expression tree.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -125,19 +200,55 @@ pub enum Value {
   /// Unicode character.
   Char(char),
   /// Homogeneous collection (collection of values of the same type).
-  List(Vec<Self>),
+  List(Vec<Value>),
   /// Heterogeneous collection (collection of values of different types).
-  Tuple(Vec<Self>),
-  /// A map between keys and values, where keys are identifiers.
-  Record(Vec<(String, Self)>),
+  Tuple(Vec<Value>),
   /// Algebraic Data Type *or* Type alias.
-  Adt(String, Vec<Self>, Arc<Adt>),
+  Adt(String, Vec<Value>, Arc<Adt>),
   /// A function value, contains values from partial application.
   Function {
     arity: u32,
-    args: Vec<Self>,
+    args: Vec<Value>,
     function: Arc<Function>,
   },
+}
+
+impl Value {
+  pub fn get_type(&self) -> Type {
+    match self {
+      | Value::Unit => Type::Unit,
+      | Value::Number(_) => Type::Var("number".to_string()),
+      | Value::Int(_) => Type::Tag("Int".to_string(), vec![]),
+      | Value::Float(_) => Type::Tag("Float".to_string(), vec![]),
+      | Value::String(_) => Type::Tag("String".to_string(), vec![]),
+      | Value::Char(_) => Type::Tag("Char".to_string(), vec![]),
+      | Value::List(items) => {
+        if items.is_empty() {
+          Type::Tag("List".to_string(), vec![Type::Var("a".to_string())])
+        } else {
+          Type::Tag("List".to_string(), vec![items.first().unwrap().get_type()])
+        }
+      },
+      | Value::Tuple(items) => Type::Tuple(items.iter().map(Value::get_type).collect()),
+      | Value::Adt(_, _, adt) => Type::Tag(
+        adt.name.clone(),
+        adt.types.iter().cloned().map(Type::Var).collect(),
+      ),
+      | Value::Function { function, args, .. } => {
+        Value::reduce_args(args.len(), &function.get_type()).clone()
+      },
+    }
+  }
+
+  fn reduce_args(args: usize, ty: &Type) -> &Type {
+    if args == 0 {
+      ty
+    } else if let Type::Function(_, ref output) = ty {
+      Self::reduce_args(args - 1, output)
+    } else {
+      ty
+    }
+  }
 }
 
 /// Values are used in `FunCall`, so they must be valid map keys.
@@ -152,7 +263,6 @@ impl Hash for Value {
       | Value::Char(value) => state.write_usize(*value as usize),
       | Value::List(value) => value.hash(state),
       | Value::Tuple(value) => value.hash(state),
-      | Value::Record(value) => value.hash(state),
       | Value::Adt(a, b, c) => {
         a.hash(state);
         b.hash(state);
@@ -202,7 +312,6 @@ impl PartialEq for Value {
       | (Value::Char(lhs), Value::Char(rhs)) => lhs == rhs,
       | (Value::List(lhs), Value::List(rhs)) => lhs == rhs,
       | (Value::Tuple(lhs), Value::Tuple(rhs)) => lhs == rhs,
-      | (Value::Record(lhs), Value::Record(rhs)) => lhs == rhs,
 
       // NOTE: This probably should use even more checks (for `arg_count` and `args`).
       | (
@@ -252,7 +361,11 @@ pub struct AdtVariant {
 /// Represents a function that can be a definition or a built-in.
 #[derive(Debug)]
 pub enum Function {
-  External(FunctionId, ExternalFunction, Type),
+  External {
+    id: FunctionId,
+    function: ExternalFunction,
+    function_type: Type,
+  },
   Definition {
     id: FunctionId,
     patterns: Vec<TypedPattern>,
@@ -265,20 +378,19 @@ pub enum Function {
 impl Function {
   fn get_id(&self) -> FunctionId {
     match self {
-      | Function::External(id, ..) => *id,
-      | Function::Definition { id, .. } => *id,
+      | Self::External { id, .. } => *id,
+      | Self::Definition { id, .. } => *id,
     }
   }
 
   pub fn get_type(&self) -> Type {
     match self {
-      | Function::External(_, _, ty, ..) => ty.clone(),
-      | Function::Definition { function_type, .. } => function_type.clone(),
+      | Self::External { function_type, .. } => function_type.clone(),
+      | Self::Definition { function_type, .. } => function_type.clone(),
     }
   }
 }
 
-/// Functions are compared using only the `FunctionId`.
 impl Eq for Function {}
 
 impl PartialEq for Function {

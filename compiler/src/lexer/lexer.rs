@@ -2,7 +2,7 @@ use nom::Err as NomError;
 use nom::error::Error as NomWrappedError;
 use nom::character;
 
-use crate::errors::{CordError, LexicalError};
+use crate::errors::{LangError, LexicalError};
 use crate::source::{SourceCode, Span};
 use super::{SpannedToken, Token};
 use super::parser;
@@ -24,17 +24,17 @@ impl Lexer {
     self.code.clone()
   }
 
-  pub fn lex(&mut self) -> Result<Vec<SpannedToken>, CordError> {
+  pub fn lex(&mut self) -> Result<Vec<SpannedToken>, LangError> {
     let (tokens, errors) = self.read_all();
 
     match errors.len() {
       | 0 => Ok(tokens),
       | 1 => Err(errors.into_iter().next().unwrap()),
-      | _ => Err(CordError::Collection(errors)),
+      | _ => Err(LangError::List(errors)),
     }
   }
 
-  pub fn read_all(&mut self) -> (Vec<SpannedToken>, Vec<CordError>) {
+  pub fn read_all(&mut self) -> (Vec<SpannedToken>, Vec<LangError>) {
     let mut errors = vec![];
     let mut tokens = vec![];
 
@@ -53,7 +53,7 @@ impl Lexer {
     (tokens, errors)
   }
 
-  pub fn read_next(&mut self) -> Result<(Span, Token), CordError> {
+  pub fn read_next(&mut self) -> Result<(Span, Token), LangError> {
     if self.pos >= self.code.len() {
       return Ok(((self.pos as u32, self.pos as u32), Token::Eof));
     }
@@ -74,6 +74,7 @@ impl Lexer {
         // Unary minus exception.
         let mut should_be_prefix_minus = false;
 
+        #[allow(clippy::manual_saturating_arithmetic)]
         if let Token::BinaryOperator(op) = &token {
           if op == "-" {
             let cursor = self.pos.checked_sub(1).unwrap_or(0);
@@ -105,7 +106,7 @@ impl Lexer {
       },
       | Err(e) => {
         let result = match e {
-          | NomError::Incomplete(_) => Err(CordError::Lexer(
+          | NomError::Incomplete(_) => Err(LangError::Lexer(
             self.code.clone(),
             LexicalError::ReachedEnd {
               pos: self.pos as u32,
@@ -115,7 +116,7 @@ impl Lexer {
           | NomError::Failure(NomWrappedError { input, .. }) => {
             let new_pos = self.code.as_str().len() - input.len();
 
-            Err(CordError::Lexer(
+            Err(LangError::Lexer(
               self.code.clone(),
               LexicalError::UnableToLex {
                 span: (start as u32, new_pos as u32),
