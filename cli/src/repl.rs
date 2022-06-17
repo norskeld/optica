@@ -17,9 +17,6 @@ pub fn repl() {
     // Eval
     let result = engine.eval_statement(&line);
 
-    println!("{:?}", &engine.typechecker.env);
-    println!("{:?}", &result);
-
     // Print
     match result {
       | Ok(opt) => {

@@ -49,64 +49,65 @@ impl Substitution {
   }
 
   fn var_pair(var: &str, ty: &Type) -> Self {
-    let mut map = HashMap::new();
-    map.insert(Type::Var(var.to_string()), ty.clone());
-
-    Substitution(map)
+    Substitution(HashMap::from([(Type::Var(var.to_string()), ty.clone())]))
   }
 
-  fn merge(self, sbst: Substitution) -> Substitution {
+  fn merge(self, sbst: &Substitution) -> Substitution {
     let mut map = HashMap::new();
 
-    for (key, value) in self.0 {
-      let value = apply_substitution_ty(&sbst, &value);
-      map.insert(key, value);
-    }
+    let Substitution(this) = self;
+    let Substitution(that) = sbst;
 
-    for (key, value) in sbst.0 {
-      map.insert(key, value);
-    }
+    this.into_iter().for_each(|(key, value)| {
+      map.extend([(key, apply_substitution_ty(&sbst, &value))].into_iter())
+    });
+
+    that
+      .into_iter()
+      .for_each(|(key, value)| map.extend([(key.to_owned(), value.to_owned())].into_iter()));
 
     Substitution(map)
   }
 
   fn replace(&self, ty: Type) -> Type {
-    self.0.get(&ty).cloned().unwrap_or(ty)
+    let Substitution(this) = self;
+
+    this.get(&ty).cloned().unwrap_or(ty)
   }
 }
 
 #[derive(Debug)]
 pub struct Typechecker {
-  pub env: Context,
+  pub context: Context,
   source: SourceCode,
 }
 
 impl Typechecker {
   pub fn new(source: SourceCode) -> Self {
     Typechecker {
-      env: Context::new(),
+      context: Context::new(),
       source,
     }
   }
 
   pub fn with(&self, source: SourceCode) -> Self {
     Typechecker {
-      env: self.env.clone(),
+      context: self.context.clone(),
       source,
     }
   }
 
   pub fn add_port(&mut self, name: &str, ty: Type) {
-    self.env.set(name, ty);
+    self.context.set(name, ty);
   }
 
   pub fn add_type_alias(&mut self, alias: TypeAlias) {
-    self.env.set_type_alias(alias);
+    self.context.set_type_alias(alias);
   }
 
   pub fn add_canonical_type_name(&mut self, name: &str, canonical: &str) {
     self
-      .env
+      .context
       .set_canonical_type_name(name, canonical.to_string());
   }
 
@@ -117,9 +118,9 @@ impl Typechecker {
       | Statement::Function(func) => self.analyze_statement_definition(func)?,
       | Statement::Port(span, name, ty) => self.analyze_statement_port(*span, name, ty)?,
       | Statement::Infix(_, _, name, def) => {
-        if let Some(ty) = self.env.get(name) {
+        if let Some(ty) = self.context.get(name) {
           vec![Declaration::Infix(name.clone(), def.clone(), ty.clone())]
-        } else if let Some(ty) = self.env.get(def) {
+        } else if let Some(ty) = self.context.get(def) {
           vec![Declaration::Infix(name.clone(), def.clone(), ty.clone())]
         } else {
           vec![]
@@ -135,21 +136,13 @@ impl Typechecker {
     modules: &HashMap<String, AnalyzedModule>,
     module: &LoadedModule,
   ) -> Result<AnalyzedModule, LangError> {
-    // let imports = if CORE_MODULES.contains(&module.src.name.as_str()) {
-    //   self.analyze_module_imports(modules, &module.ast.imports)?
-    // } else {
-    //   let mut imports = self.get_default_imports(modules)?;
-    //   imports.extend(self.analyze_module_imports(modules, &module.ast.imports)?);
-    //   imports
-    // };
-
     let imports = self.analyze_module_imports(modules, &module.ast.imports)?;
 
     // Avoid problems with statement order.
     for stmt in &module.ast.statements {
       if let Some(ty) = declared_statement_type(stmt) {
         self
-          .env
+          .context
           .set(declared_statement_name(stmt).unwrap(), ty.clone());
       }
     }
@@ -157,7 +150,7 @@ impl Typechecker {
     // Custom behavior for binary operators.
     for statement in &module.ast.statements {
       if let Statement::Infix(_, _, name, def) = statement {
-        let ty = if let Some(ty) = self.env.get(def) {
+        let ty = if let Some(ty) = self.context.get(def) {
           ty.clone()
         } else {
           unreachable!(
@@ -166,7 +159,7 @@ impl Typechecker {
           );
         };
 
-        self.env.set(name, ty);
+        self.context.set(name, ty);
       }
     }
 
@@ -258,10 +251,10 @@ impl Typechecker {
     // Any error inside the block should be returned after `exit_block()`. We cannot use
     // `self.env.block()`, because we call `self.check_type()`, it needs an immutable reference to
     // self and `self.env.block()` already has a mutable reference to self.
-    self.env.enter_block();
+    self.context.enter_block();
 
     let adt_variants = {
-      // Register own name to allow recursive definitions
+      // Register own name to allow recursive definitions.
       self.add_canonical_type_name(name, name);
 
       let mut adt_variants: Vec<(Span, AdtVariant)> = vec![];
@@ -285,9 +278,9 @@ impl Typechecker {
       Ok(adt_variants)
     };
 
-    self.env.exit_block();
+    self.context.exit_block();
 
-    // Return if Err(_)
+    // Return if Err(_).
     let adt_variants: Vec<(Span, AdtVariant)> = adt_variants?;
 
     // For each variant a definition is added, this definition is a constructor.
@@ -344,12 +337,12 @@ impl Typechecker {
 
 impl Typechecker {
   pub fn analyze_definition(&mut self, func: &Definition) -> Result<TypedDefinition, LangError> {
-    infer_definition_type(&mut self.env, func)
+    infer_definition_type(&mut self.context, func)
       .map_err(|error| LangError::Typechecker(self.source.clone(), error))
   }
 
   pub fn analyze_expression(&mut self, expr: &Expression) -> Result<TypedExpression, LangError> {
-    infer_expression_type(&mut self.env, expr)
+    infer_expression_type(&mut self.context, expr)
       .map_err(|e| LangError::Typechecker(self.source.clone(), e))
   }
 
@@ -364,7 +357,7 @@ impl Typechecker {
       | Type::Unit => Type::Unit,
       | Type::Var(_) => ty,
       | Type::Tag(name, items) => {
-        let canonical_name = match self.env.get_canonical_type_name(&name) {
+        let canonical_name = match self.context.get_canonical_type_name(&name) {
           | Some(name_str) => name_str.to_string(),
           | None => {
             return Err(TypeError::UnknownType {
@@ -405,7 +398,7 @@ impl Typechecker {
           .map(|it| self.replace_type_alias(it))
           .collect();
 
-        if let Some(alias) = self.env.get_type_alias(&a) {
+        if let Some(alias) = self.context.get_type_alias(&a) {
           assert_eq!(params.len(), alias.variables.len());
 
           let mut map = HashMap::new();
@@ -1343,7 +1336,7 @@ fn unify_constraints(constraints: &[Constraint]) -> Result<Substitution, TypeErr
     let new_substitution = unify_one(&vec[0])?;
 
     vec = apply_substitution_set(&new_substitution, &vec[1..]);
-    sub = sub.merge(new_substitution);
+    sub = sub.merge(&new_substitution);
   }
 
   Ok(sub)
