@@ -1,6 +1,7 @@
 #![allow(clippy::module_inception)]
 
 pub(crate) mod ast;
+pub mod cli;
 pub mod errors;
 pub(crate) mod intrinsics;
 pub(crate) mod lexer;

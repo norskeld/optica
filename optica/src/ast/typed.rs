@@ -3,8 +3,6 @@ use std::fmt::{Debug, Error, Formatter};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
 use crate::errors::LangError;
 use crate::runtime::Interpreter;
 use crate::source::Span;
@@ -17,7 +15,7 @@ pub type FunctionId = usize;
 /// Built-in function alias.
 pub type BuiltinFunction = fn(&mut Interpreter, &[Value]) -> Result<Value, LangError>;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Declaration {
   Alias(TypeAlias),
   Adt(String, Arc<Adt>),
@@ -26,7 +24,7 @@ pub enum Declaration {
   Port(String, Type),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum TypedExpression {
   Const(Span, Type, Value),
   Tuple(Span, Type, Vec<TypedExpression>),
@@ -126,7 +124,7 @@ impl PartialEq for TypedExpression {
 }
 
 /// A typed function definition.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypedDefinition {
   pub header: Type,
   pub name: String,
@@ -135,7 +133,7 @@ pub struct TypedDefinition {
 }
 
 /// A pattern that represents 1 or more function arguments.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypedPattern {
   Var(Span, Type, String),
   Adt(Span, Type, Type, Vec<TypedPattern>),
@@ -185,7 +183,7 @@ impl TypedPattern {
 }
 
 /// Represents the final value after the evaluation of an expression tree.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
   /// The unit value, similar to void in other languages.
   Unit,
@@ -344,7 +342,7 @@ impl From<Literal> for Value {
 }
 
 /// Represents an ADT type with all the information about the variants.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq)]
 pub struct Adt {
   pub name: String,
   pub types: Vec<String>,
@@ -352,7 +350,7 @@ pub struct Adt {
 }
 
 /// Is a variant in an ADT.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq)]
 pub struct AdtVariant {
   pub name: String,
   pub types: Vec<Type>,
@@ -396,24 +394,6 @@ impl Eq for Function {}
 impl PartialEq for Function {
   fn eq(&self, other: &Function) -> bool {
     self.get_id() == other.get_id()
-  }
-}
-
-impl Serialize for Function {
-  fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    panic!("ExternalFunction cannot be serialized");
-  }
-}
-
-impl<'de> Deserialize<'de> for Function {
-  fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
-  where
-    D: Deserializer<'de>,
-  {
-    panic!("ExternalFunction cannot be deserialized");
   }
 }
 

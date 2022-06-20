@@ -3,8 +3,6 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-
 use crate::ast::untyped::Module;
 use crate::ast::typed::{Declaration, Value};
 use crate::errors::{LangError, LoaderError, Wrappable};
@@ -38,7 +36,7 @@ pub struct RuntimeModule {
   pub definitions: HashMap<String, Value>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct ImportedModule {
   pub source: String,
   pub source_name: String,

@@ -1,7 +1,7 @@
 use std::io::{self, BufRead, Write};
 
-use compiler::errors::LangError;
-use compiler::runtime::Runtime;
+use crate::errors::LangError;
+use crate::runtime::Runtime;
 
 pub fn repl() {
   let mut engine = Runtime::new();

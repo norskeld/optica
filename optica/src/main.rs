@@ -1,8 +1,6 @@
 use clap::Parser;
-use compiler::errors::LangError;
-
-mod read;
-mod repl;
+use optica::errors::LangError;
+use optica::cli;
 
 #[derive(Parser, Debug)]
 #[clap(version, about, long_about = None)]
@@ -16,9 +14,9 @@ fn main() -> Result<(), LangError> {
   let options = Cli::parse();
 
   if let Some(file) = options.file {
-    read::read(file.as_str())?;
+    cli::read(file.as_str())?;
   } else {
-    repl::repl();
+    cli::repl();
   }
 
   Ok(())

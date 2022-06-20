@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use compiler::errors::LangError;
-use compiler::runtime::Runtime;
+use crate::errors::LangError;
+use crate::runtime::Runtime;
 
 pub fn read(path: &str) -> Result<(), LangError> {
   let mut runtime = Runtime::new();
