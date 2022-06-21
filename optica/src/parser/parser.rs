@@ -38,11 +38,13 @@ impl Parser {
       .map_err(|error| LangError::Parser(self.code.clone(), error))
   }
 
+  #[allow(dead_code)]
   pub fn parse_type(&mut self) -> Result<Type, LangError> {
     combinators::complete(&types::parse_type, self.fresh_input()?)
       .map_err(|error| LangError::Parser(self.code.clone(), error))
   }
 
+  #[allow(dead_code)]
   pub fn parse_pattern(&mut self) -> Result<Pattern, LangError> {
     combinators::complete(&pattern::parse_pattern, self.fresh_input()?)
       .map_err(|error| LangError::Parser(self.code.clone(), error))

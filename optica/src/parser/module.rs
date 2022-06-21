@@ -70,23 +70,6 @@ pub fn parse_module(input: Input) -> Result<(Module, Input), ParseError> {
   ))
 }
 
-fn skip_to_the_next_block(input: Input) -> Input {
-  let mut input = input;
-
-  loop {
-    match input.read() {
-      | Token::Indent(0) => {
-        break;
-      },
-      | _ => {
-        input = input.next();
-      },
-    }
-  }
-
-  input
-}
-
 fn skip_empty_lines(input: Input) -> Result<Input, ParseError> {
   let mut input = input;
 
@@ -114,6 +97,19 @@ fn parse_module_header(input: Input) -> Result<(ModuleHeader, Input), ParseError
     },
   };
 
+  let (exports, input) = combinators::optional(&parse_module_exports, input);
+
+  let exports = match exports {
+    | Some(exports) => exports,
+    | None => ModuleExports::All,
+  };
+
+  let input = combinators::expect(Token::WhereKw, input)?;
+
+  Ok((ModuleHeader { name, exports }, input))
+}
+
+fn parse_module_exports(input: Input) -> Result<(ModuleExports, Input), ParseError> {
   let input = combinators::expect(Token::LeftParen, input)?;
 
   let (exports, input) = match input.read() {
@@ -130,9 +126,8 @@ fn parse_module_header(input: Input) -> Result<(ModuleHeader, Input), ParseError
   };
 
   let input = combinators::expect(Token::RightParen, input)?;
-  let input = combinators::expect(Token::WhereKw, input)?;
 
-  Ok((ModuleHeader { name, exports }, input))
+  Ok((exports, input))
 }
 
 fn parse_import(input: Input) -> Result<(ModuleImport, Input), ParseError> {
@@ -266,6 +261,7 @@ mod tests {
 
   #[test]
   fn test_module_header() {
+    testing::is_ok(parse_module_header, "module Main where");
     testing::is_ok(parse_module_header, "module Main (..) where");
     testing::is_ok(parse_module_header, "module Util (func) where");
     testing::is_ok(parse_module_header, "module Util (A) where");
@@ -297,6 +293,20 @@ mod tests {
   }
 
   #[test]
+  fn test_basic_module_implicit_exports() {
+    let code = indoc! {"
+      module Main where
+
+      import Util
+
+      x = 0
+      func x = x
+    "};
+
+    testing::is_ok(parse_module, code.trim());
+  }
+
+  #[test]
   fn test_multiline_exports() {
     let code = indoc! {"
       module Main (
@@ -315,6 +325,22 @@ mod tests {
     testing::assert_eq(
       parse_module,
       "module Main (..) where",
+      Module {
+        header: Some(ModuleHeader {
+          name: "Main".to_string(),
+          exports: ModuleExports::All,
+        }),
+        imports: vec![],
+        statements: vec![],
+      },
+    );
+  }
+
+  #[test]
+  fn test_empty_module_implicit_exports() {
+    testing::assert_eq(
+      parse_module,
+      "module Main where",
       Module {
         header: Some(ModuleHeader {
           name: "Main".to_string(),

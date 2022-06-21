@@ -6,5 +6,7 @@ mod module;
 mod parser;
 mod pattern;
 mod statement;
-mod testing;
 mod types;
+
+#[cfg(test)]
+mod testing;
