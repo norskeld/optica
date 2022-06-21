@@ -108,6 +108,26 @@ impl Interpreter {
           | _ => Err(InterpreterError::InvalidIfCondition(value.clone()).wrap()),
         }
       },
+      | TypedExpression::Case(_, _, cond, branches) => {
+        let cond_val = self.eval_expression(cond)?;
+
+        for (patt, expr) in branches {
+          if matches_pattern(patt, &cond_val) {
+            return self.eval_expression(expr);
+          }
+        }
+
+        Err(
+          InterpreterError::CaseExpressionNonExhaustive(
+            cond_val,
+            branches
+              .into_iter()
+              .map(|(p, _)| p.clone())
+              .collect::<Vec<_>>(),
+          )
+          .wrap(),
+        )
+      },
       | TypedExpression::Lambda(_, ty, pattern, expr) => Ok(Self::create_lambda_closure(
         &mut self.stack,
         ty,
@@ -472,6 +492,81 @@ pub fn add_pattern_values(
   }
 
   Ok(())
+}
+
+fn matches_pattern(pattern: &TypedPattern, value: &Value) -> bool {
+  match pattern {
+    | TypedPattern::Var(_, _, _) => true,
+    | TypedPattern::Wildcard(_) => true,
+    | TypedPattern::Alias(_, _, pattern, _) => matches_pattern(pattern, value),
+    | TypedPattern::Adt(_, _, pattern_ty, pattern_sub) => {
+      let value_ty = value.get_type();
+
+      if let Value::Adt(_, value_sub, _) = value {
+        pattern_ty == &value_ty
+          && pattern_sub
+            .iter()
+            .zip(value_sub)
+            .all(|(pattern, value)| matches_pattern(pattern, value))
+      } else {
+        false
+      }
+    },
+    | TypedPattern::Unit(_) => value == &Value::Unit,
+    | TypedPattern::Tuple(_, _, pattern_sub) => {
+      if let Value::Tuple(value_sub) = value {
+        pattern_sub
+          .iter()
+          .zip(value_sub)
+          .all(|(pattern, value)| matches_pattern(pattern, value))
+      } else {
+        false
+      }
+    },
+    | TypedPattern::List(_, _, pattern_sub) => {
+      if let Value::List(value_sub) = value {
+        pattern_sub
+          .iter()
+          .zip(value_sub)
+          .all(|(pattern, value)| matches_pattern(pattern, value))
+      } else {
+        false
+      }
+    },
+    | TypedPattern::BinaryOperator(_, _, op, first, rest) => {
+      assert_eq!(op.as_str(), "::");
+
+      if let Value::List(value_sub) = value {
+        if !value_sub.is_empty() {
+          matches_pattern(first, &value_sub[0])
+            && matches_pattern(rest, &Value::List(value_sub[1..].to_vec()))
+        } else {
+          false
+        }
+      } else {
+        false
+      }
+    },
+    | TypedPattern::LitInt(_, p) => match value {
+      | Value::Int(v) => (*p) == (*v),
+      | Value::Number(v) => (*p) == (*v),
+      | _ => false,
+    },
+    | TypedPattern::LitString(_, p) => {
+      if let Value::String(v) = value {
+        p == v
+      } else {
+        false
+      }
+    },
+    | TypedPattern::LitChar(_, p) => {
+      if let Value::Char(v) = value {
+        *p == *v
+      } else {
+        false
+      }
+    },
+  }
 }
 
 impl Default for Interpreter {

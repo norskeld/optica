@@ -37,6 +37,12 @@ pub enum TypedExpression {
     Box<TypedExpression>,
     Box<TypedExpression>,
   ),
+  Case(
+    Span,
+    Type,
+    Box<TypedExpression>,
+    Vec<(TypedPattern, TypedExpression)>,
+  ),
   Lambda(Span, Type, Vec<TypedPattern>, Box<TypedExpression>),
   Application(Span, Type, Box<TypedExpression>, Box<TypedExpression>),
   Let(Span, Type, Vec<TypedLet>, Box<TypedExpression>),
@@ -50,6 +56,7 @@ impl TypedExpression {
       | TypedExpression::List(span, _, _) => span,
       | TypedExpression::Ref(span, _, _) => span,
       | TypedExpression::If(span, _, _, _, _) => span,
+      | TypedExpression::Case(span, _, _, _) => span,
       | TypedExpression::Lambda(span, _, _, _) => span,
       | TypedExpression::Application(span, _, _, _) => span,
       | TypedExpression::Let(span, _, _, _) => span,
@@ -63,6 +70,7 @@ impl TypedExpression {
       | TypedExpression::List(_, ty, _) => ty.clone(),
       | TypedExpression::Ref(_, ty, _) => ty.clone(),
       | TypedExpression::If(_, ty, _, _, _) => ty.clone(),
+      | TypedExpression::Case(_, ty, _, _) => ty.clone(),
       | TypedExpression::Lambda(_, ty, _, _) => ty.clone(),
       | TypedExpression::Application(_, ty, _, _) => ty.clone(),
       | TypedExpression::Let(_, ty, _, _) => ty.clone(),
@@ -97,6 +105,13 @@ impl PartialEq for TypedExpression {
       | TypedExpression::If(_, _, lhs_cond, lhs_then, lhs_else) => {
         if let TypedExpression::If(_, _, rhs_cond, rhs_then, rhs_else) = other {
           lhs_cond == rhs_cond && lhs_then == rhs_then && lhs_else == rhs_else
+        } else {
+          false
+        }
+      },
+      | TypedExpression::Case(_, _, lhs_expr, lhs_branches) => {
+        if let TypedExpression::Case(_, _, rhs_expr, rhs_branches) = other {
+          lhs_expr == rhs_expr && lhs_branches == rhs_branches
         } else {
           false
         }

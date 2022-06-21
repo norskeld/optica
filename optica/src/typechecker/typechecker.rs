@@ -1298,6 +1298,16 @@ fn collect_expr_constraints(res: &mut Vec<Constraint>, expr: &TypedExpression) {
       collect_expr_constraints(res, b);
       collect_expr_constraints(res, c);
     },
+    | TypedExpression::Case(span, ty, expr, cases) => {
+      collect_expr_constraints(res, expr);
+
+      for (pattern, expression) in cases {
+        collect_pattern_constraints(res, pattern);
+        collect_expr_constraints(res, expression);
+
+        res.push(Constraint::new(*span, ty, &expression.get_type()));
+      }
+    },
     | TypedExpression::Lambda(span, ty, patterns, expr) => {
       let mut chain = vec![];
 
@@ -1542,6 +1552,15 @@ fn replace_expr_types(sub: &Substitution, annotated: TypedExpression) -> TypedEx
       Box::new(replace_expr_types(sub, *a)),
       Box::new(replace_expr_types(sub, *b)),
       Box::new(replace_expr_types(sub, *c)),
+    ),
+    | TypedExpression::Case(span, ty, expr, branches) => TypedExpression::Case(
+      span,
+      sub.replace(ty),
+      Box::new(replace_expr_types(sub, *expr)),
+      branches
+        .into_iter()
+        .map(|(branch_pattern, branch_expr)| (branch_pattern, replace_expr_types(sub, branch_expr)))
+        .collect::<Vec<_>>(),
     ),
     | TypedExpression::Lambda(span, ty, a, b) => TypedExpression::Lambda(
       span,
