@@ -1,4 +1,4 @@
-# Cord
+# Optica
 
 Minimal, interpreted, statically typed functional programming language.
 
