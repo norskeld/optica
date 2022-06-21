@@ -1,6 +1,5 @@
 use nom::IResult;
 use nom::branch::*;
-use nom::bytes::complete::*;
 use nom::character::complete::*;
 use nom::combinator::*;
 use nom::multi::*;
@@ -33,10 +32,6 @@ fn hexadecimal(input: &[u8]) -> ParseResult<'_, char> {
 
 fn octal(input: &[u8]) -> ParseResult<'_, char> {
   one_of("01234567")(input)
-}
-
-fn newline(input: &[u8]) -> ParseResult<'_, char> {
-  one_of("\r\n")(input)
 }
 
 fn binary_operator_char(input: &[u8]) -> ParseResult<'_, char> {
@@ -208,40 +203,12 @@ fn right_brace(input: &[u8]) -> ParseResult<'_, Token> {
   map(char('}'), |_| Token::RightBrace)(input)
 }
 
-fn colon(input: &[u8]) -> ParseResult<'_, Token> {
-  map(char(':'), |_| Token::Colon)(input)
-}
-
-fn underscore(input: &[u8]) -> ParseResult<'_, Token> {
-  map(char('_'), |_| Token::Underscore)(input)
-}
-
-fn dot(input: &[u8]) -> ParseResult<'_, Token> {
-  map(char('.'), |_| Token::Dot)(input)
-}
-
-fn double_dot(input: &[u8]) -> ParseResult<'_, Token> {
-  map(tag(".."), |_| Token::DoubleDot)(input)
-}
-
 fn comma(input: &[u8]) -> ParseResult<'_, Token> {
   map(char(','), |_| Token::Comma)(input)
 }
 
-fn equals(input: &[u8]) -> ParseResult<'_, Token> {
-  map(char('='), |_| Token::Equals)(input)
-}
-
 fn back_slash(input: &[u8]) -> ParseResult<'_, Token> {
   map(char('\\'), |_| Token::BackSlash)(input)
-}
-
-fn left_arrow(input: &[u8]) -> ParseResult<'_, Token> {
-  map(tag("<-"), |_| Token::LeftArrow)(input)
-}
-
-fn right_arrow(input: &[u8]) -> ParseResult<'_, Token> {
-  map(tag("->"), |_| Token::RightArrow)(input)
 }
 
 fn end_of_file(input: &[u8]) -> ParseResult<'_, Token> {
