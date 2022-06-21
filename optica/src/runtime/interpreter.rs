@@ -38,7 +38,7 @@ impl Interpreter {
 
   pub fn true_value(&mut self) -> Value {
     self
-      .eval_expr(&TypedExpression::Ref(
+      .eval_expression(&TypedExpression::Ref(
         (0, 0),
         ast::type_bool(),
         "True".to_string(),
@@ -48,7 +48,7 @@ impl Interpreter {
 
   pub fn false_value(&mut self) -> Value {
     self
-      .eval_expr(&TypedExpression::Ref(
+      .eval_expression(&TypedExpression::Ref(
         (0, 0),
         ast::type_bool(),
         "False".to_string(),
@@ -56,13 +56,13 @@ impl Interpreter {
       .unwrap()
   }
 
-  pub fn eval_expr(&mut self, expr: &TypedExpression) -> Result<Value, LangError> {
+  pub fn eval_expression(&mut self, expr: &TypedExpression) -> Result<Value, LangError> {
     match expr {
       | TypedExpression::Ref(_, _, name) => {
-        let opt = self.stack.find(name);
+        let stack_value = self.stack.find(name);
 
-        match opt {
-          | Some(val) => Ok(val),
+        match stack_value {
+          | Some(value) => Ok(value),
           | None => Err(InterpreterError::MissingDefinition(name.clone()).wrap()),
         }
       },
@@ -70,7 +70,7 @@ impl Interpreter {
       | TypedExpression::Tuple(_, _, items) => {
         let values = items
           .iter()
-          .map(|e| self.eval_expr(e))
+          .map(|expr| self.eval_expression(expr))
           .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Value::Tuple(values))
@@ -78,43 +78,54 @@ impl Interpreter {
       | TypedExpression::List(_, _, items) => {
         let values = items
           .iter()
-          .map(|e| self.eval_expr(e))
+          .map(|expr| self.eval_expression(expr))
           .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Value::List(values))
       },
-      | TypedExpression::If(_, _, cond, a, b) => {
-        let cond = self.eval_expr(cond)?;
+      | TypedExpression::If(_, _, cond, then_, else_) => {
+        let cond = self.eval_expression(cond)?;
 
-        match &cond {
-          | Value::Adt(ref name, ref vals, _) => {
-            if name == "True" && vals.is_empty() {
-              self.eval_expr(a)
-            } else if name == "False" && vals.is_empty() {
-              self.eval_expr(b)
+        // TODO: This should be investigated.
+        let value = if let Value::Function { args, function, .. } = &cond {
+          self.exec_function(function, args.to_vec())?
+        } else {
+          cond
+        };
+
+        // TODO: Make `Bool` internal type and value.
+        match &value {
+          | Value::Adt(ref name, ref values, _) => {
+            if name == "True" && values.is_empty() {
+              self.eval_expression(then_)
+            } else if name == "False" && values.is_empty() {
+              self.eval_expression(else_)
             } else {
-              Err(InterpreterError::InvalidIfCondition(cond.clone()).wrap())
+              Err(InterpreterError::InvalidIfCondition(value.clone()).wrap())
             }
           },
-          | _ => Err(InterpreterError::InvalidIfCondition(cond.clone()).wrap()),
+          | _ => Err(InterpreterError::InvalidIfCondition(value.clone()).wrap()),
         }
       },
-      | TypedExpression::Lambda(_, ty, patt, expr) => {
-        Ok(Self::create_lambda_closure(&mut self.stack, ty, patt, expr))
-      },
-      | TypedExpression::Application(_, _, fun, input) => {
-        let function = self.eval_expr(fun)?;
-        let input = self.eval_expr(input)?;
+      | TypedExpression::Lambda(_, ty, pattern, expr) => Ok(Self::create_lambda_closure(
+        &mut self.stack,
+        ty,
+        pattern,
+        expr,
+      )),
+      | TypedExpression::Application(_, _, function, input) => {
+        let function = self.eval_expression(function)?;
+        let input = self.eval_expression(input)?;
 
-        self.application(function, input)
+        self.apply(function, input)
       },
     }
   }
 
   pub fn eval_declaration(&mut self, decl: &Declaration) -> Result<Option<Value>, LangError> {
-    if let Declaration::Definition(_, def) = decl {
-      let (name, value) = self.eval_definition(def);
-      let value = self.eval_const(value)?;
+    if let Declaration::Definition(_, definition) = decl {
+      let (name, value) = self.eval_definition(definition);
+      let value = self.eval_constant(value)?;
 
       self.stack.add(&name, value.clone());
 
@@ -136,38 +147,32 @@ impl Interpreter {
   pub fn eval_constants(&mut self, module: RuntimeModule) -> Result<RuntimeModule, LangError> {
     let RuntimeModule {
       name,
-      definitions: old_definitions,
+      definitions,
       imports,
     } = module;
-    let mut definitions = HashMap::new();
 
-    for (name, value) in old_definitions.into_iter() {
-      let new_value = self.eval_const(value)?;
-      definitions.insert(name, new_value);
+    let mut const_defs = HashMap::new();
+
+    for (name, value) in definitions.into_iter() {
+      const_defs.insert(name, self.eval_constant(value)?);
     }
 
     Ok(RuntimeModule {
       name,
-      definitions,
+      definitions: const_defs,
       imports,
     })
   }
 
-  fn eval_const(&mut self, value: Value) -> Result<Value, LangError> {
-    let opt = if let Value::Function {
-      arity, function, ..
-    } = &value
-    {
-      if *arity == 0 {
-        Some(self.exec_function(function.borrow(), vec![])?)
-      } else {
-        None
-      }
-    } else {
-      None
+  fn eval_constant(&mut self, value: Value) -> Result<Value, LangError> {
+    let constant = match &value {
+      | Value::Function {
+        arity, function, ..
+      } if *arity == 0 => Some(self.exec_function(function.borrow(), vec![])?),
+      | _ => None,
     };
 
-    Ok(opt.unwrap_or(value))
+    Ok(constant.unwrap_or(value))
   }
 
   pub fn eval_module(
@@ -183,13 +188,6 @@ impl Interpreter {
         .ok_or_else(|| InterpreterError::MissingModule(vec![import.source.to_string()]).wrap())?;
 
       let value = module.definitions.get(&import.source_name).ok_or_else(|| {
-        eprintln!(
-          "Failed to find {} in {} {:#?}",
-          import.source_name,
-          import.source,
-          module.definitions.keys().collect::<Vec<_>>()
-        );
-
         InterpreterError::MissingDefinition(import.source_name.to_string()).wrap()
       })?;
 
@@ -198,19 +196,17 @@ impl Interpreter {
 
     for decl in &module.declarations {
       match decl {
-        | Declaration::Port(_, _) => {},
         | Declaration::Definition(_, def) => {
           let (name, value) = self.eval_definition(def);
           definitions.insert(name, value);
         },
-        | Declaration::Alias(_) => {},
         | Declaration::Adt(_, adt) => {
           for variant in &adt.variants {
             let (name, value) = self.eval_adt_variant(adt.clone(), variant);
             definitions.insert(name, value);
           }
         },
-        | Declaration::Infix(_, _, _) => {},
+        | _ => {},
       }
     }
 
@@ -238,13 +234,13 @@ impl Interpreter {
     let mut value = function;
 
     for arg in arguments {
-      value = self.application(value, arg.clone())?;
+      value = self.apply(value, arg.clone())?;
     }
 
     Ok(value)
   }
 
-  fn application(&mut self, func_value: Value, input: Value) -> Result<Value, LangError> {
+  fn apply(&mut self, func_value: Value, input: Value) -> Result<Value, LangError> {
     if let Value::Function {
       arity,
       args,
@@ -293,15 +289,16 @@ impl Interpreter {
       } => {
         assert_eq!(patterns.len(), args.len());
 
-        for (name, val) in captures {
-          self.stack.add(name, val.clone())
+        for (name, value) in captures {
+          let value = self.eval_constant(value.clone())?;
+          self.stack.add(name, value)
         }
 
-        for (patt, val) in patterns.iter().zip(args) {
-          add_pattern_values(self, patt, val).unwrap();
+        for (pattern, value) in patterns.iter().zip(args) {
+          add_pattern_values(self, pattern, value).unwrap();
         }
 
-        self.eval_expr(expression)
+        self.eval_expression(expression)
       },
     };
 
@@ -311,7 +308,7 @@ impl Interpreter {
   }
 
   pub fn create_lambda_closure(
-    env: &mut Stack,
+    stack: &mut Stack,
     ty: &Type,
     patterns: &[TypedPattern],
     expr: &TypedExpression,
@@ -320,7 +317,7 @@ impl Interpreter {
       id: ast::function_id(),
       patterns: patterns.to_owned(),
       expression: expr.clone(),
-      captures: Self::extract_captures(env, expr),
+      captures: Self::extract_captures(stack, expr),
       function_type: ty.clone(),
     });
 
@@ -331,12 +328,12 @@ impl Interpreter {
     }
   }
 
-  pub fn create_function_closure(env: &mut Stack, def: &TypedDefinition) -> Value {
+  pub fn create_function_closure(stack: &mut Stack, def: &TypedDefinition) -> Value {
     let function = Arc::new(Function::Definition {
       id: ast::function_id(),
       patterns: def.patterns.clone(),
       expression: def.expression.clone(),
-      captures: Self::extract_captures(env, &def.expression),
+      captures: Self::extract_captures(stack, &def.expression),
       function_type: def.header.clone(),
     });
 
@@ -347,36 +344,37 @@ impl Interpreter {
     }
   }
 
-  pub fn extract_captures(env: &mut Stack, expr: &TypedExpression) -> HashMap<String, Value> {
+  pub fn extract_captures(stack: &mut Stack, expr: &TypedExpression) -> HashMap<String, Value> {
     let mut map = HashMap::new();
-    Self::traverse_expr(&mut map, env, expr);
+    Self::traverse_expr(&mut map, stack, expr);
+
     map
   }
 
-  fn traverse_expr(result: &mut HashMap<String, Value>, env: &mut Stack, expr: &TypedExpression) {
+  fn traverse_expr(result: &mut HashMap<String, Value>, stack: &mut Stack, expr: &TypedExpression) {
     // TODO: Avoid capturing internal definitions.
     match expr {
       | TypedExpression::Ref(_, _, name) => {
-        if let Some(value) = env.find(name) {
+        if let Some(value) = stack.find(name) {
           result.insert(name.to_string(), value);
         }
       },
       | TypedExpression::Tuple(_, _, list) | TypedExpression::List(_, _, list) => {
         for expr in list {
-          Self::traverse_expr(result, env, expr);
+          Self::traverse_expr(result, stack, expr);
         }
       },
       | TypedExpression::If(_, _, a, b, c) => {
-        Self::traverse_expr(result, env, a.as_ref());
-        Self::traverse_expr(result, env, b.as_ref());
-        Self::traverse_expr(result, env, c.as_ref());
+        Self::traverse_expr(result, stack, a.as_ref());
+        Self::traverse_expr(result, stack, b.as_ref());
+        Self::traverse_expr(result, stack, c.as_ref());
       },
       | TypedExpression::Application(_, _, a, b) => {
-        Self::traverse_expr(result, env, a.as_ref());
-        Self::traverse_expr(result, env, b.as_ref());
+        Self::traverse_expr(result, stack, a.as_ref());
+        Self::traverse_expr(result, stack, b.as_ref());
       },
       | TypedExpression::Lambda(_, _, _, box_expr) => {
-        Self::traverse_expr(result, env, box_expr.as_ref());
+        Self::traverse_expr(result, stack, box_expr.as_ref());
       },
       | _ => { /* Ignored. */ },
     }
@@ -460,5 +458,82 @@ pub fn add_pattern_values(
 impl Default for Interpreter {
   fn default() -> Self {
     Self::new()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::super::testing;
+  use super::*;
+
+  #[test]
+  fn test_unit() {
+    let expression = testing::typed_expression("()");
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(interpreter.eval_expression(&expression), Ok(Value::Unit));
+  }
+
+  #[test]
+  fn test_list() {
+    let expression = testing::typed_expression("[1, 2, 3]");
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::List(vec![
+        Value::Number(1),
+        Value::Number(2),
+        Value::Number(3),
+      ]))
+    );
+  }
+
+  #[test]
+  fn test_number() {
+    let expression = testing::typed_expression("42");
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::Number(42))
+    );
+  }
+
+  #[test]
+  fn test_float() {
+    let expression = testing::typed_expression("42.42");
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::Float(42.42))
+    );
+  }
+
+  #[test]
+  fn test_char() {
+    let expression = testing::typed_expression("'x'");
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::Char('x'))
+    );
+  }
+
+  #[test]
+  fn test_tuple() {
+    let expression = testing::typed_expression(r#"(42, "Life", [40, 2])"#);
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::Tuple(vec![
+        Value::Number(42),
+        Value::String("Life".to_string()),
+        Value::List(vec![Value::Number(40), Value::Number(2)])
+      ]))
+    );
   }
 }

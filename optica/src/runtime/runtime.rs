@@ -41,7 +41,7 @@ impl Runtime {
     let mut parser = Parser::new(lexer);
     let expr = parser.parse_expression()?;
     let typed_expr = self.typechecker.with(code).analyze_expression(&expr)?;
-    let value = self.interpreter.eval_expr(&typed_expr)?;
+    let value = self.interpreter.eval_expression(&typed_expr)?;
 
     Ok(value)
   }

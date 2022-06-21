@@ -5,3 +5,6 @@ use stack::*;
 mod interpreter;
 mod runtime;
 mod stack;
+
+#[cfg(test)]
+mod testing;
