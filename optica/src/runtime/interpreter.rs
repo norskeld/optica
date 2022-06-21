@@ -3,11 +3,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::ast;
-use crate::ast::typed::{
-  Adt, AdtVariant, Declaration, Function, TypedDefinition, TypedExpression, TypedLet, TypedPattern,
-  Value,
-};
-use crate::ast::untyped::Type;
+use crate::ast::typed::*;
+use crate::ast::untyped::*;
 use crate::errors::{InterpreterError, LangError, Wrappable};
 use crate::intrinsics;
 use crate::loader::{AnalyzedModule, RuntimeModule};
@@ -111,16 +108,19 @@ impl Interpreter {
       | TypedExpression::Case(_, _, cond, branches) => {
         let cond_val = self.eval_expression(cond)?;
 
-        for (patt, expr) in branches {
-          if matches_pattern(patt, &cond_val) {
-            return self.eval_expression(expr);
+        for (pattern, expression) in branches {
+          if matches_pattern(pattern, &cond_val) {
+            return self.eval_expression(expression);
           }
         }
 
         Err(
           InterpreterError::CaseExpressionNonExhaustive(
             cond_val,
-            branches.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
+            branches
+              .iter()
+              .map(|(pattern, _)| pattern.clone())
+              .collect::<Vec<_>>(),
           )
           .wrap(),
         )
@@ -274,29 +274,29 @@ impl Interpreter {
     Ok(value)
   }
 
-  fn apply(&mut self, func_value: Value, input: Value) -> Result<Value, LangError> {
+  fn apply(&mut self, function: Value, input: Value) -> Result<Value, LangError> {
     if let Value::Function {
       arity,
       args,
       function,
-    } = &func_value
+    } = &function
     {
-      let argc = args.len() as u32 + 1;
+      let args_count = args.len() as u32 + 1;
 
-      if *arity < argc {
+      if *arity < args_count {
         return Err(
-          InterpreterError::FunArgumentSizeMismatch(*arity, argc, function.clone()).wrap(),
+          InterpreterError::FunArgumentSizeMismatch(*arity, args_count, function.clone()).wrap(),
         );
       }
 
-      let mut arg_vec = args.clone();
-      arg_vec.push(input);
+      let mut args = args.clone();
+      args.push(input);
 
-      let value = if *arity == argc {
-        self.exec_function(function, arg_vec)?
+      let value = if *arity == args_count {
+        self.exec_function(function, args)?
       } else {
         Value::Function {
-          args: arg_vec,
+          args,
           arity: *arity,
           function: function.clone(),
         }
@@ -304,7 +304,7 @@ impl Interpreter {
 
       Ok(value)
     } else {
-      Err(InterpreterError::ExpectedFunction(func_value.clone()).wrap())
+      Err(InterpreterError::ExpectedFunction(function.clone()).wrap())
     }
   }
 
@@ -396,21 +396,21 @@ impl Interpreter {
         }
       },
       | TypedExpression::Tuple(_, _, list) | TypedExpression::List(_, _, list) => {
-        for expr in list {
-          Self::traverse_expr(result, stack, expr);
+        for expression in list {
+          Self::traverse_expr(result, stack, expression);
         }
       },
-      | TypedExpression::If(_, _, a, b, c) => {
-        Self::traverse_expr(result, stack, a.as_ref());
-        Self::traverse_expr(result, stack, b.as_ref());
-        Self::traverse_expr(result, stack, c.as_ref());
+      | TypedExpression::If(_, _, cond, then_, else_) => {
+        Self::traverse_expr(result, stack, cond.as_ref());
+        Self::traverse_expr(result, stack, then_.as_ref());
+        Self::traverse_expr(result, stack, else_.as_ref());
       },
-      | TypedExpression::Application(_, _, a, b) => {
-        Self::traverse_expr(result, stack, a.as_ref());
-        Self::traverse_expr(result, stack, b.as_ref());
+      | TypedExpression::Application(_, _, function, input) => {
+        Self::traverse_expr(result, stack, function.as_ref());
+        Self::traverse_expr(result, stack, input.as_ref());
       },
-      | TypedExpression::Lambda(_, _, _, box_expr) => {
-        Self::traverse_expr(result, stack, box_expr.as_ref());
+      | TypedExpression::Lambda(_, _, _, expression) => {
+        Self::traverse_expr(result, stack, expression.as_ref());
       },
       | _ => { /* Ignored. */ },
     }
@@ -428,57 +428,47 @@ pub fn add_pattern_values(
     },
     | TypedPattern::Alias(_, _, typed_pattern, name) => {
       interpreter.stack.add(name, value.clone());
-
       add_pattern_values(interpreter, typed_pattern, value)?;
     },
     | TypedPattern::Adt(_, _, _, typed_patterns) => {
-      if let Value::Adt(_, vars, _) = &value {
-        for (typed_pattern, val) in typed_patterns.iter().zip(vars) {
-          add_pattern_values(interpreter, typed_pattern, val.clone())?;
+      if let Value::Adt(_, values, _) = &value {
+        for (typed_pattern, value) in typed_patterns.iter().zip(values) {
+          add_pattern_values(interpreter, typed_pattern, value.clone())?;
         }
       } else {
         return Err(InterpreterError::ExpectedAdt(value.clone()));
       }
     },
     | TypedPattern::Tuple(_, _, typed_patterns) => {
-      if let Value::Tuple(vars) = &value {
-        for (typed_pattern, val) in typed_patterns.iter().zip(vars) {
-          add_pattern_values(interpreter, typed_pattern, val.clone())?;
+      if let Value::Tuple(values) = &value {
+        for (typed_pattern, value) in typed_patterns.iter().zip(values) {
+          add_pattern_values(interpreter, typed_pattern, value.clone())?;
         }
       } else {
         return Err(InterpreterError::ExpectedTuple(value.clone()));
       }
     },
     | TypedPattern::List(_, _, typed_patterns) => {
-      if let Value::List(vars) = &value {
-        for (typed_pattern, val) in typed_patterns.iter().zip(vars) {
-          add_pattern_values(interpreter, typed_pattern, val.clone())?;
+      if let Value::List(values) = &value {
+        for (typed_pattern, value) in typed_patterns.iter().zip(values) {
+          add_pattern_values(interpreter, typed_pattern, value.clone())?;
         }
       } else {
         return Err(InterpreterError::ExpectedList(value.clone()));
       }
     },
-    | TypedPattern::LitInt(_, _) => {},
-    | TypedPattern::LitString(_, _) => {},
-    | TypedPattern::LitChar(_, _) => {},
-    | TypedPattern::Wildcard(_) => {},
-    | TypedPattern::Unit(_) => {},
-    | TypedPattern::BinaryOperator(_, _, op, a, b) => {
+    | TypedPattern::BinaryOperator(_, _, op, left, right) => {
       if op == "::" {
-        if let Value::List(vars) = &value {
-          if vars.is_empty() {
+        if let Value::List(values) = &value {
+          if values.is_empty() {
             return Err(InterpreterError::ExpectedNonEmptyList(value.clone()));
           }
 
-          let first = vars[0].clone();
-          let mut rest: Vec<Value> = Vec::new();
+          let first = values[0].clone();
+          let rest = values.iter().skip(1).cloned().collect::<Vec<_>>();
 
-          for item in vars.iter().skip(1) {
-            rest.push(item.clone());
-          }
-
-          add_pattern_values(interpreter, a, first)?;
-          add_pattern_values(interpreter, b, Value::List(rest))?;
+          add_pattern_values(interpreter, left, first)?;
+          add_pattern_values(interpreter, right, Value::List(rest))?;
         } else {
           return Err(InterpreterError::ExpectedList(value.clone()));
         }
@@ -486,6 +476,11 @@ pub fn add_pattern_values(
         return Err(InterpreterError::UnknownOperatorPattern(op.clone()));
       }
     },
+    | TypedPattern::LitInt(_, _)
+    | TypedPattern::LitString(_, _)
+    | TypedPattern::LitChar(_, _)
+    | TypedPattern::Wildcard(_)
+    | TypedPattern::Unit(_) => { /* Ignored. */ },
   }
 
   Ok(())
