@@ -159,7 +159,7 @@ impl Interpreter {
     }
   }
 
-  pub fn eval_declaration(
+  pub fn eval_statement(
     &mut self,
     typed_statement: &TypedStatement,
   ) -> Result<Option<Value>, LangError> {

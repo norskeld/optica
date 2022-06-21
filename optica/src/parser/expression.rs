@@ -1,4 +1,3 @@
-use crate::ast;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::lexer::Token;
@@ -6,6 +5,7 @@ use crate::source::Input;
 use crate::utils;
 use super::combinators;
 use super::pattern;
+use super::statement;
 
 pub fn parse_expr(input: Input) -> Result<(Expression, Input), ParseError> {
   let (first, input) = parse_expr_application(input)?;
@@ -170,6 +170,31 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
         input,
       )
     },
+    | Token::LetKw => {
+      let input = input.next();
+      let level = combinators::read_optional_indent(input.clone());
+
+      let input = input.enter_level(level);
+
+      let (let_definitions, input) = combinators::many1(
+        &|input| parse_let(level, combinators::expect_indent(level, input)?),
+        input,
+      )?;
+
+      let input = input.exit_level(level);
+
+      let input = combinators::expect(Token::InKw, input)?;
+      let (let_expression, input) = parse_expr(input)?;
+
+      (
+        Expression::Let(
+          (input.pos(), input.pos()),
+          let_definitions,
+          Box::from(let_expression),
+        ),
+        input,
+      )
+    },
     | _ => {
       return Err(ParseError::UnmatchedToken {
         span: input.span(),
@@ -180,6 +205,22 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
   };
 
   Ok((expr, input))
+}
+
+fn parse_let(indent: u32, input: Input) -> Result<(Let, Input), ParseError> {
+  match input.read() {
+    | Token::Ident(_) => {
+      let (definition, input) = statement::parse_definition(indent, input)?;
+      Ok((Let::Definition(definition), input))
+    },
+    | _ => {
+      let (pattern, input) = pattern::parse_pattern(input)?;
+      let input = combinators::expect(Token::Equals, input)?;
+      let (expression, input) = parse_expr(input)?;
+
+      Ok((Let::Pattern(pattern, expression), input))
+    },
+  }
 }
 
 fn parse_dot_name(input: Input) -> Result<(String, Input), ParseError> {
@@ -212,8 +253,8 @@ fn create_binary_operator_chain(first: Expression, rest: Vec<(String, Expression
   }
 
   let ((first, _), (_, last)) = (
-    ast::span(exprs.first().unwrap()),
-    ast::span(exprs.last().unwrap()),
+    exprs.first().unwrap().get_span(),
+    exprs.last().unwrap().get_span(),
   );
 
   Expression::OperatorChain((first, last), exprs, ops)
@@ -253,6 +294,7 @@ mod tests {
     testing::is_ok(parse_expr, "1+2");
     testing::is_ok(parse_expr, "-42");
     testing::is_ok(parse_expr, "-(1+2)");
+    testing::is_ok(parse_expr, "let life = 42 in life");
   }
 
   #[test]
@@ -571,6 +613,51 @@ mod tests {
           Box::from(Expression::Ref((1, 2), "n".to_string())),
         )),
         Box::from(Expression::Ref((0, 0), "string".to_string())),
+      ),
+    );
+  }
+
+  #[test]
+  fn test_let() {
+    testing::assert_eq(
+      parse_expr,
+      "let life = 42 in life",
+      Expression::Let(
+        (21, 21),
+        vec![Let::Definition(Definition {
+          header: None,
+          name: "life".to_string(),
+          patterns: vec![],
+          expression: Expression::Literal((11, 13), Literal::Int(42)),
+        })],
+        Box::from(Expression::Ref((17, 21), "life".to_string())),
+      ),
+    );
+  }
+
+  #[test]
+  fn test_let_indented() {
+    // NOTE: `in` is indented because we are parsing expression outside of assignment. In real code
+    // everything works as expected.
+    let code = indoc! {"
+      let
+        life = 42
+       in
+        life
+    "};
+
+    testing::assert_eq(
+      parse_expr,
+      code,
+      Expression::Let(
+        (26, 26),
+        vec![Let::Definition(Definition {
+          header: None,
+          name: "life".to_string(),
+          patterns: vec![],
+          expression: Expression::Literal((13, 15), Literal::Int(42)),
+        })],
+        Box::from(Expression::Ref((22, 26), "life".to_string())),
       ),
     );
   }

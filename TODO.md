@@ -7,3 +7,4 @@
 - Make `Bool` internal type and value?
 - Add more tests.
 - Set up CI.
+- Probably use `Range` for spans.

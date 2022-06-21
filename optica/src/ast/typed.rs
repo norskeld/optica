@@ -24,6 +24,28 @@ pub enum TypedStatement {
   Port(String, Type),
 }
 
+impl TypedStatement {
+  pub fn get_name(&self) -> &str {
+    match self {
+      | TypedStatement::Port(name, ..) => name,
+      | TypedStatement::Definition(name, ..) => name,
+      | TypedStatement::Alias(alias, ..) => &alias.name,
+      | TypedStatement::Adt(name, ..) => name,
+      | TypedStatement::Infix(name, ..) => name,
+    }
+  }
+
+  pub fn get_type(&self) -> Option<&Type> {
+    match self {
+      | TypedStatement::Port(_, ty) => Some(ty),
+      | TypedStatement::Definition(_, ty) => Some(&ty.header),
+      | TypedStatement::Alias(_) => None,
+      | TypedStatement::Adt(_, _) => None,
+      | TypedStatement::Infix(_, _, ty) => Some(ty),
+    }
+  }
+}
+
 #[derive(Clone, Debug)]
 pub enum TypedExpression {
   Const(Span, Type, Value),

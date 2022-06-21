@@ -26,7 +26,7 @@ pub fn repl() {
       },
       | Err(err) => {
         if let LangError::Parser(..) = err {
-          let result = engine.eval_expr(&line);
+          let result = engine.eval_expression(&line);
 
           match result {
             | Ok(value) => {

@@ -13,7 +13,7 @@ pub fn read(path: &str) -> Result<(), LangError> {
   runtime.include_file(path)?;
   runtime.import_module(&module)?;
 
-  match runtime.eval_expr(&format!("{module}.main")) {
+  match runtime.eval_expression(&format!("{module}.main")) {
     | Ok(value) => {
       println!("{value:?}");
       Ok(())

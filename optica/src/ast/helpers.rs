@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::vec::IntoIter;
 
-use crate::source::Span;
 use super::typed::*;
 use super::untyped::*;
 
@@ -11,42 +10,6 @@ static FUNC_ID: AtomicUsize = AtomicUsize::new(0);
 /// Retrieves and increments the next free function ID.
 pub fn function_id() -> FunctionId {
   FUNC_ID.fetch_add(1, Ordering::SeqCst)
-}
-
-pub fn declaration_name(decl: &TypedStatement) -> &str {
-  match decl {
-    | TypedStatement::Port(name, ..) => name,
-    | TypedStatement::Definition(name, ..) => name,
-    | TypedStatement::Alias(alias, ..) => &alias.name,
-    | TypedStatement::Adt(name, ..) => name,
-    | TypedStatement::Infix(name, ..) => name,
-  }
-}
-
-pub fn declaration_type(decl: &TypedStatement) -> Option<&Type> {
-  match decl {
-    | TypedStatement::Port(_, ty) => Some(ty),
-    | TypedStatement::Definition(_, ty) => Some(&ty.header),
-    | TypedStatement::Alias(_) => None,
-    | TypedStatement::Adt(_, _) => None,
-    | TypedStatement::Infix(_, _, ty) => Some(ty),
-  }
-}
-
-/// Returns the `Expression`'s `Span`.
-pub fn span(expression: &Expression) -> Span {
-  *match expression {
-    | Expression::Unit(span) => span,
-    | Expression::Tuple(span, _) => span,
-    | Expression::List(span, _) => span,
-    | Expression::If(span, _, _, _) => span,
-    | Expression::Lambda(span, _, _) => span,
-    | Expression::Application(span, _, _) => span,
-    | Expression::OperatorChain(span, _, _) => span,
-    | Expression::Literal(span, _) => span,
-    | Expression::Ref(span, _) => span,
-    | Expression::QualifiedRef(span, _, _) => span,
-  }
 }
 
 pub fn type_unary_minus() -> Type {

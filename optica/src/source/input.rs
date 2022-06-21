@@ -40,6 +40,11 @@ impl Input {
     self.raw.tokens[cursor].token.clone()
   }
 
+  pub fn read_forced(&self) -> Token {
+    let cursor = self.cursor.min(self.raw.tokens.len() - 1);
+    self.raw.tokens[cursor].token.clone()
+  }
+
   fn skip_indent(&self) -> usize {
     let mut cursor = self.cursor;
 
@@ -55,6 +60,31 @@ impl Input {
     }
 
     cursor.min(self.raw.tokens.len() - 1)
+  }
+
+  pub fn enter_level(&self, level: u32) -> Input {
+    let mut copy = (&(*self.levels)).clone();
+    copy.push(level);
+
+    Input {
+      raw: Rc::clone(&self.raw),
+      levels: Rc::new(copy),
+      cursor: self.cursor,
+    }
+  }
+
+  pub fn exit_level(&self, level: u32) -> Input {
+    let mut copy = (&(*self.levels)).clone();
+
+    if let Some(index) = copy.iter().position(|lv| *lv == level) {
+      copy.remove(index);
+    }
+
+    Input {
+      raw: Rc::clone(&self.raw),
+      levels: Rc::new(copy),
+      cursor: self.cursor,
+    }
   }
 
   pub fn span(&self) -> Span {

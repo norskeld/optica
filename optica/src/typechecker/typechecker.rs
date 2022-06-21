@@ -54,7 +54,7 @@ impl Substitution {
     let Substitution(that) = sbst;
 
     this.into_iter().for_each(|(key, value)| {
-      map.extend([(key, apply_substitution_ty(sbst, &value))].into_iter())
+      map.extend([(key, apply_substitution_type(sbst, &value))].into_iter())
     });
 
     that
@@ -146,10 +146,8 @@ impl Typechecker {
 
     // Avoid problems with statement order.
     for statement in &module.ast.statements {
-      if let Some(ty) = statement_type(statement) {
-        self
-          .context
-          .set(statement_name(statement).unwrap(), ty.clone());
+      if let Some(ty) = statement.get_type() {
+        self.context.set(statement.get_name().unwrap(), ty.clone());
       }
     }
 
@@ -776,32 +774,6 @@ impl Typechecker {
   }
 }
 
-fn statement_type(stmt: &Statement) -> Option<&Type> {
-  match stmt {
-    | Statement::Alias(_, _, _) => None,
-    | Statement::Adt(_, _, _) => None,
-    | Statement::Infix(_, _, _, _) => None,
-    | Statement::Port(_, _, ty) => Some(ty),
-    | Statement::Function(func) => {
-      if let Some(ty) = &func.header {
-        Some(ty)
-      } else {
-        None
-      }
-    },
-  }
-}
-
-fn statement_name(stmt: &Statement) -> Option<&str> {
-  match stmt {
-    | Statement::Alias(_, _, _) => None,
-    | Statement::Adt(_, _, _) => None,
-    | Statement::Infix(_, _, name, _) => Some(name),
-    | Statement::Port(_, name, _) => Some(name),
-    | Statement::Function(func) => Some(&func.name),
-  }
-}
-
 fn unpack_types(ty: &Type) -> Vec<Type> {
   let mut current = ty.clone();
   let mut components = vec![];
@@ -827,7 +799,7 @@ fn infer_expression_type(
     let annotated_expr = annotate_expression(env, expr)?;
 
     // Collect constraints.
-    collect_expr_constraints(&mut constraints, &annotated_expr);
+    collect_expression_constraints(&mut constraints, &annotated_expr);
 
     // Constraint solutions.
     let substitution = match unify_constraints(&constraints) {
@@ -841,7 +813,7 @@ fn infer_expression_type(
   })?;
 
   // Apply solution.
-  let res_expr = replace_expr_types(&substitution, annotated_expr);
+  let res_expr = replace_expression_types(&substitution, annotated_expr);
 
   Ok(res_expr)
 }
@@ -866,7 +838,7 @@ fn infer_definition_type(
       }
 
       for pattern in &annotated_patterns {
-        add_pattern_vars_to_env(ctx, pattern);
+        add_pattern_vars_to_context(ctx, pattern);
       }
 
       let annotated_expr = annotate_expression(ctx, &definition.expression)?;
@@ -887,7 +859,7 @@ fn infer_definition_type(
         collect_pattern_constraints(&mut constraints, pattern);
       }
 
-      collect_expr_constraints(&mut constraints, &annotated_expr);
+      collect_expression_constraints(&mut constraints, &annotated_expr);
 
       // Function type.
       let mut func_types = annotated_patterns
@@ -920,7 +892,7 @@ fn infer_definition_type(
     })?;
 
   // Apply solution.
-  let definition_expression = replace_expr_types(&substitution, annotated_expression);
+  let definition_expression = replace_expression_types(&substitution, annotated_expression);
   let definition_patterns = annotated_patterns
     .into_iter()
     .map(|it| replace_pattern_types(&substitution, it))
@@ -1132,7 +1104,7 @@ fn annotate_expression(
       let expr = context.block(|ctx| {
         patterns
           .iter()
-          .for_each(|it| add_pattern_vars_to_env(ctx, it));
+          .for_each(|it| add_pattern_vars_to_context(ctx, it));
 
         annotate_expression(ctx, expression)
       })?;
@@ -1161,6 +1133,38 @@ fn annotate_expression(
           });
         },
       }
+    },
+    | Expression::Let(span, let_definitions, let_expression) => {
+      let (entries, typed_expression) = context.block(|ctx| {
+        let mut entries = vec![];
+
+        for let_definition in let_definitions {
+          match let_definition {
+            | Let::Definition(definition) => {
+              let typed_def = infer_definition_type(ctx, definition)?;
+
+              ctx.set(&definition.name, typed_def.header.clone());
+              entries.push(TypedLet::Definition(typed_def));
+            },
+            | Let::Pattern(pattern, expression) => {
+              let typed_pattern = annotate_pattern(ctx, pattern)?;
+              let typed_expression = annotate_expression(ctx, expression)?;
+
+              add_pattern_vars_to_context(ctx, &typed_pattern);
+              entries.push(TypedLet::Pattern(typed_pattern, typed_expression));
+            },
+          }
+        }
+
+        Ok((entries, annotate_expression(ctx, let_expression)?))
+      })?;
+
+      TypedExpression::Let(
+        *span,
+        typed_expression.get_type(),
+        entries,
+        Box::new(typed_expression),
+      )
     },
   };
 
@@ -1277,17 +1281,20 @@ fn collect_pattern_constraints(constraints: &mut Vec<Constraint>, typed_pattern:
   }
 }
 
-fn collect_expr_constraints(constraints: &mut Vec<Constraint>, expr: &TypedExpression) {
-  match expr {
+fn collect_expression_constraints(
+  constraints: &mut Vec<Constraint>,
+  typed_expression: &TypedExpression,
+) {
+  match typed_expression {
     | TypedExpression::Tuple(_, ty, expressions) => {
       constraints.push(Constraint::new(
-        expr.get_span(),
+        typed_expression.get_span(),
         ty,
         &Type::Tuple(expressions.map(|it| it.get_type())),
       ));
 
       for expression in expressions {
-        collect_expr_constraints(constraints, expression);
+        collect_expression_constraints(constraints, expression);
       }
     },
     | TypedExpression::List(_, ty, expressions) => {
@@ -1298,29 +1305,37 @@ fn collect_expr_constraints(constraints: &mut Vec<Constraint>, expr: &TypedExpre
           &ast::type_list(expression.get_type()),
         ));
 
-        collect_expr_constraints(constraints, expression);
+        collect_expression_constraints(constraints, expression);
       }
     },
     | TypedExpression::If(_, ty, cond, then_, else_) => {
       constraints.push(Constraint::new(
-        expr.get_span(),
+        typed_expression.get_span(),
         &cond.get_type(),
         &ast::type_bool(),
       ));
 
-      constraints.push(Constraint::new(expr.get_span(), ty, &then_.get_type()));
-      constraints.push(Constraint::new(expr.get_span(), ty, &else_.get_type()));
+      constraints.push(Constraint::new(
+        typed_expression.get_span(),
+        ty,
+        &then_.get_type(),
+      ));
+      constraints.push(Constraint::new(
+        typed_expression.get_span(),
+        ty,
+        &else_.get_type(),
+      ));
 
-      collect_expr_constraints(constraints, cond);
-      collect_expr_constraints(constraints, then_);
-      collect_expr_constraints(constraints, else_);
+      collect_expression_constraints(constraints, cond);
+      collect_expression_constraints(constraints, then_);
+      collect_expression_constraints(constraints, else_);
     },
     | TypedExpression::Case(span, ty, expression, cases) => {
-      collect_expr_constraints(constraints, expression);
+      collect_expression_constraints(constraints, expression);
 
       for (pattern, expression) in cases {
         collect_pattern_constraints(constraints, pattern);
-        collect_expr_constraints(constraints, expression);
+        collect_expression_constraints(constraints, expression);
 
         constraints.push(Constraint::new(*span, ty, &expression.get_type()));
       }
@@ -1336,20 +1351,20 @@ fn collect_expr_constraints(constraints: &mut Vec<Constraint>, expr: &TypedExpre
       chain.push(expression.get_type());
       constraints.push(Constraint::new(*span, ty, &ast::type_func(chain)));
 
-      collect_expr_constraints(constraints, expression);
+      collect_expression_constraints(constraints, expression);
     },
     | TypedExpression::Application(_, ty, a, b) => {
       constraints.push(Constraint::new(
-        expr.get_span(),
+        typed_expression.get_span(),
         &a.get_type(),
         &Type::Function(Box::new(b.get_type()), Box::new(ty.clone())),
       ));
 
-      collect_expr_constraints(constraints, a);
-      collect_expr_constraints(constraints, b);
+      collect_expression_constraints(constraints, a);
+      collect_expression_constraints(constraints, b);
     },
     | TypedExpression::Let(_, _, _, expression) => {
-      collect_expr_constraints(constraints, expression);
+      collect_expression_constraints(constraints, expression);
     },
     | TypedExpression::Ref(_, _, _) | TypedExpression::Const(_, _, _) => { /* Ignored */ },
   }
@@ -1479,12 +1494,12 @@ fn apply_substitution_set(sbst: &Substitution, constraint: &[Constraint]) -> Vec
 fn apply_substitution_constraint(sbst: &Substitution, constraint: &Constraint) -> Constraint {
   Constraint::new(
     constraint.span,
-    &apply_substitution_ty(sbst, &constraint.left),
-    &apply_substitution_ty(sbst, &constraint.right),
+    &apply_substitution_type(sbst, &constraint.left),
+    &apply_substitution_type(sbst, &constraint.right),
   )
 }
 
-fn apply_substitution_ty(sbst: &Substitution, ty: &Type) -> Type {
+fn apply_substitution_type(sbst: &Substitution, ty: &Type) -> Type {
   let Substitution(map) = sbst;
 
   map.iter().fold(ty.clone(), |result, (var, solution)| {
@@ -1560,8 +1575,11 @@ fn replace_pattern_types(sbst: &Substitution, pattern: TypedPattern) -> TypedPat
   }
 }
 
-fn replace_expr_types(sbst: &Substitution, annotated: TypedExpression) -> TypedExpression {
-  match annotated {
+fn replace_expression_types(
+  sbst: &Substitution,
+  annotated_expression: TypedExpression,
+) -> TypedExpression {
+  match annotated_expression {
     | TypedExpression::Const(span, ty, value) => {
       TypedExpression::Const(span, sbst.replace(ty), value)
     },
@@ -1570,7 +1588,7 @@ fn replace_expr_types(sbst: &Substitution, annotated: TypedExpression) -> TypedE
       sbst.replace(ty),
       expressions
         .into_iter()
-        .map(|it| replace_expr_types(sbst, it))
+        .map(|it| replace_expression_types(sbst, it))
         .collect(),
     ),
     | TypedExpression::List(span, ty, expressions) => TypedExpression::List(
@@ -1578,25 +1596,25 @@ fn replace_expr_types(sbst: &Substitution, annotated: TypedExpression) -> TypedE
       sbst.replace(ty),
       expressions
         .into_iter()
-        .map(|it| replace_expr_types(sbst, it))
+        .map(|it| replace_expression_types(sbst, it))
         .collect(),
     ),
     | TypedExpression::Ref(span, ty, a) => TypedExpression::Ref(span, sbst.replace(ty), a),
     | TypedExpression::If(span, ty, cond, then_, else_) => TypedExpression::If(
       span,
       sbst.replace(ty),
-      Box::new(replace_expr_types(sbst, *cond)),
-      Box::new(replace_expr_types(sbst, *then_)),
-      Box::new(replace_expr_types(sbst, *else_)),
+      Box::new(replace_expression_types(sbst, *cond)),
+      Box::new(replace_expression_types(sbst, *then_)),
+      Box::new(replace_expression_types(sbst, *else_)),
     ),
     | TypedExpression::Case(span, ty, expression, branches) => TypedExpression::Case(
       span,
       sbst.replace(ty),
-      Box::new(replace_expr_types(sbst, *expression)),
+      Box::new(replace_expression_types(sbst, *expression)),
       branches
         .into_iter()
         .map(|(branch_pattern, branch_expr)| {
-          (branch_pattern, replace_expr_types(sbst, branch_expr))
+          (branch_pattern, replace_expression_types(sbst, branch_expr))
         })
         .collect::<Vec<_>>(),
     ),
@@ -1604,49 +1622,49 @@ fn replace_expr_types(sbst: &Substitution, annotated: TypedExpression) -> TypedE
       span,
       sbst.replace(ty),
       a,
-      Box::new(replace_expr_types(sbst, *b)),
+      Box::new(replace_expression_types(sbst, *b)),
     ),
     | TypedExpression::Application(span, ty, a, b) => TypedExpression::Application(
       span,
       sbst.replace(ty),
-      Box::new(replace_expr_types(sbst, *a)),
-      Box::new(replace_expr_types(sbst, *b)),
+      Box::new(replace_expression_types(sbst, *a)),
+      Box::new(replace_expression_types(sbst, *b)),
     ),
     | TypedExpression::Let(span, ty, let_defs, let_expr) => TypedExpression::Let(
       span,
       sbst.replace(ty),
       let_defs,
-      Box::new(replace_expr_types(sbst, *let_expr)),
+      Box::new(replace_expression_types(sbst, *let_expr)),
     ),
   }
 }
 
-fn add_pattern_vars_to_env(context: &mut Context, pat: &TypedPattern) {
-  match pat {
+fn add_pattern_vars_to_context(context: &mut Context, pattern: &TypedPattern) {
+  match pattern {
     | TypedPattern::Var(_, ty, name) => {
       context.set(name, ty.clone());
     },
     | TypedPattern::Adt(_, _, _, patterns) => {
-      patterns.for_each(|it| add_pattern_vars_to_env(context, it));
+      patterns.for_each(|it| add_pattern_vars_to_context(context, it));
     },
-    | TypedPattern::Wildcard(_) => {},
-    | TypedPattern::Unit(_) => {},
     | TypedPattern::Tuple(_, _, patterns) => {
-      patterns.for_each(|it| add_pattern_vars_to_env(context, it));
+      patterns.for_each(|it| add_pattern_vars_to_context(context, it));
     },
     | TypedPattern::List(_, _, patterns) => {
-      patterns.for_each(|it| add_pattern_vars_to_env(context, it));
+      patterns.for_each(|it| add_pattern_vars_to_context(context, it));
     },
     | TypedPattern::BinaryOperator(_, _, _, lhs_pattern, rhs_pattern) => {
-      add_pattern_vars_to_env(context, lhs_pattern);
-      add_pattern_vars_to_env(context, rhs_pattern);
+      add_pattern_vars_to_context(context, lhs_pattern);
+      add_pattern_vars_to_context(context, rhs_pattern);
     },
-    | TypedPattern::LitInt(_, _) => {},
-    | TypedPattern::LitString(_, _) => {},
-    | TypedPattern::LitChar(_, _) => {},
     | TypedPattern::Alias(_, ty, pattern, name) => {
-      add_pattern_vars_to_env(context, pattern.as_ref());
+      add_pattern_vars_to_context(context, pattern.as_ref());
       context.set(name, ty.clone());
     },
+    | TypedPattern::Unit(_)
+    | TypedPattern::Wildcard(_)
+    | TypedPattern::LitInt(_, _)
+    | TypedPattern::LitString(_, _)
+    | TypedPattern::LitChar(_, _) => { /* Ignored */ },
   }
 }

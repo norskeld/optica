@@ -28,7 +28,7 @@ impl Stack {
       .last_mut()
       .unwrap()
       .values
-      .insert(name.to_owned(), value);
+      .insert(name.to_string(), value);
   }
 
   pub fn find(&self, name: &str) -> Option<Value> {

@@ -244,3 +244,13 @@ where
 
   Ok(result)
 }
+
+// Readers.
+
+pub fn read_optional_indent(input: Input) -> u32 {
+  if let Token::Indent(found) = input.read_forced() {
+    found
+  } else {
+    std::u32::MAX
+  }
+}

@@ -100,7 +100,7 @@ impl ModuleLoader {
     let missing_deps = dependencies
       .iter()
       .filter(|dep| {
-        !runtime.loaded_modules.contains_key(*dep) && !runtime.analyzed_modules.contains_key(*dep)
+        !runtime.loaded_modules.contains_key(*dep) && !runtime.typed_modules.contains_key(*dep)
       })
       .cloned()
       .collect::<Vec<String>>();

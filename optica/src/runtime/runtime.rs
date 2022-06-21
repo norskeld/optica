@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::ast;
 use crate::ast::typed::*;
 use crate::errors::*;
 use crate::lexer::Lexer;
@@ -15,8 +14,8 @@ pub struct Runtime {
   pub interpreter: Interpreter,
   pub typechecker: Typechecker,
   pub loaded_modules: HashMap<String, LoadedModule>,
-  pub analyzed_modules: HashMap<String, TypedModule>,
   pub runtime_modules: HashMap<String, RuntimeModule>,
+  pub typed_modules: HashMap<String, TypedModule>,
 }
 
 impl Runtime {
@@ -29,19 +28,23 @@ impl Runtime {
       interpreter: Interpreter::new(),
       typechecker: Typechecker::new(SourceCode::from_str("")),
       loaded_modules: HashMap::new(),
-      analyzed_modules: HashMap::new(),
+      typed_modules: HashMap::new(),
       runtime_modules: HashMap::new(),
     }
   }
 
   /// Evaluates an expression like, e.g. `1 + 2`.
-  pub fn eval_expr(&mut self, expr: &str) -> Result<Value, LangError> {
+  pub fn eval_expression(&mut self, expr: &str) -> Result<Value, LangError> {
     let code = SourceCode::from_str(expr);
     let lexer = Lexer::new(&code);
     let mut parser = Parser::new(lexer);
-    let expr = parser.parse_expression()?;
-    let typed_expr = self.typechecker.with(code).typecheck_expression(&expr)?;
-    let value = self.interpreter.eval_expression(&typed_expr)?;
+    let expression = parser.parse_expression()?;
+    let typed_expression = self
+      .typechecker
+      .with(code)
+      .typecheck_expression(&expression)?;
+
+    let value = self.interpreter.eval_expression(&typed_expression)?;
 
     Ok(value)
   }
@@ -57,20 +60,20 @@ impl Runtime {
     let lexer = Lexer::new(&code);
     let mut parser = Parser::new(lexer);
     let statement = parser.parse_statement()?;
-    let declarations = self
+    let typed_statements = self
       .typechecker
       .with(code)
       .typecheck_statement(&statement)?;
 
     let mut value = None;
 
-    for decl in &declarations {
-      value = self.interpreter.eval_declaration(decl)?;
+    for typed_statement in &typed_statements {
+      value = self.interpreter.eval_statement(typed_statement)?;
 
-      if let Some(ty) = ast::declaration_type(decl) {
+      if let Some(ty) = typed_statement.get_type() {
         self
           .typechecker
-          .add_port(ast::declaration_name(decl), ty.clone());
+          .add_port(typed_statement.get_name(), ty.clone());
       }
     }
 
@@ -121,7 +124,7 @@ impl Runtime {
   /// the current environment with an alias.
   pub fn import_module_as(&mut self, module_name: &str, alias: &str) -> Result<(), LangError> {
     if !self.runtime_modules.contains_key(module_name) {
-      self.load_analyzed_module(module_name)?;
+      self.load_typed_module(module_name)?;
     }
 
     self.load_runtime_module(module_name)?;
@@ -142,11 +145,11 @@ impl Runtime {
         )
       },
       |module| {
-        for (def, value) in &module.definitions {
+        for (definition, value) in &module.definitions {
           let name = if alias.is_empty() {
-            def.clone()
+            definition.clone()
           } else {
-            format!("{alias}.{def}")
+            format!("{alias}.{definition}")
           };
 
           self.typechecker.add_port(&name, value.get_type());
@@ -158,7 +161,7 @@ impl Runtime {
     )
   }
 
-  fn load_analyzed_module(&mut self, module_name: &str) -> Result<(), LangError> {
+  fn load_typed_module(&mut self, module_name: &str) -> Result<(), LangError> {
     let dependencies = self
       .loaded_modules
       .get(module_name)
@@ -172,9 +175,9 @@ impl Runtime {
       .clone();
 
     // Load dependencies.
-    for dep in &dependencies {
-      if !self.analyzed_modules.contains_key(dep) {
-        self.load_analyzed_module(dep)?;
+    for dependency in &dependencies {
+      if !self.typed_modules.contains_key(dependency) {
+        self.load_typed_module(dependency)?;
       }
     }
 
@@ -187,18 +190,18 @@ impl Runtime {
 
     // Typecheck module.
     let mut typechecker = Typechecker::new(module.src.source.clone());
-    let analyzed_module = typechecker.typecheck_module(&self.analyzed_modules, module)?;
+    let typed_module = typechecker.typecheck_module(&self.typed_modules, module)?;
 
     self
-      .analyzed_modules
-      .insert(module_name.to_string(), analyzed_module);
+      .typed_modules
+      .insert(module_name.to_string(), typed_module);
 
     Ok(())
   }
 
   fn load_runtime_module(&mut self, module_name: &str) -> Result<(), LangError> {
     let dependencies = self
-      .analyzed_modules
+      .typed_modules
       .get(module_name)
       .ok_or_else(|| {
         LoaderError::MissingModule {
@@ -210,26 +213,25 @@ impl Runtime {
       .clone();
 
     // Load dependencies.
-    for dep in &dependencies {
-      if !self.runtime_modules.contains_key(dep) {
-        self.load_runtime_module(dep)?;
+    for dependency in &dependencies {
+      if !self.runtime_modules.contains_key(dependency) {
+        self.load_runtime_module(dependency)?;
       }
     }
 
     let mut interpreter = Interpreter::new();
 
-    let runtime_module = {
-      let module = self.analyzed_modules.get(module_name).ok_or_else(|| {
+    let runtime_module = self
+      .typed_modules
+      .get(module_name)
+      .ok_or_else(|| {
         LoaderError::MissingModule {
           module: module_name.to_string(),
         }
         .wrap()
-      })?;
-
-      interpreter.eval_module(&self.runtime_modules, module)?
-    };
-
-    let runtime_module = interpreter.eval_constants(runtime_module)?;
+      })
+      .and_then(|module| interpreter.eval_module(&self.runtime_modules, module))
+      .and_then(|module| interpreter.eval_constants(module))?;
 
     self
       .runtime_modules

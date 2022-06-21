@@ -16,6 +16,7 @@ pub enum Expression {
   OperatorChain(Span, Vec<Expression>, Vec<String>),
   Ref(Span, String),
   QualifiedRef(Span, Vec<String>, String),
+  Let(Span, Vec<Let>, Box<Expression>),
 }
 
 impl Expression {
@@ -31,6 +32,7 @@ impl Expression {
       | Expression::OperatorChain(span, _, _) => span,
       | Expression::Ref(span, _) => span,
       | Expression::QualifiedRef(span, _, _) => span,
+      | Expression::Let(span, _, _) => span,
     }
   }
 }
@@ -104,8 +106,21 @@ impl PartialEq for Expression {
           false
         }
       },
+      | Expression::Let(_, lhs_defs, lhs_expr) => {
+        if let Expression::Let(_, rhs_defs, rhs_expr) = other {
+          lhs_defs == rhs_defs && lhs_expr == rhs_expr
+        } else {
+          false
+        }
+      },
     }
   }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Let {
+  Definition(Definition),
+  Pattern(Pattern, Expression),
 }
 
 /// A value literal. Bools will be handled in later stages.
@@ -310,6 +325,34 @@ pub enum Statement {
   Function(Definition),
   Infix(InfixDirection, Int, String, String),
   Port(Span, String, Type),
+}
+
+impl Statement {
+  pub fn get_name(&self) -> Option<&str> {
+    match self {
+      | Statement::Alias(_, _, _) => None,
+      | Statement::Adt(_, _, _) => None,
+      | Statement::Infix(_, _, name, _) => Some(name),
+      | Statement::Port(_, name, _) => Some(name),
+      | Statement::Function(func) => Some(&func.name),
+    }
+  }
+
+  pub fn get_type(&self) -> Option<&Type> {
+    match self {
+      | Statement::Alias(_, _, _) => None,
+      | Statement::Adt(_, _, _) => None,
+      | Statement::Infix(_, _, _, _) => None,
+      | Statement::Port(_, _, ty) => Some(ty),
+      | Statement::Function(func) => {
+        if let Some(ty) = &func.header {
+          Some(ty)
+        } else {
+          None
+        }
+      },
+    }
+  }
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -29,12 +29,15 @@ enum ExpressionKind {
 
 pub fn to_expression(tree: ExpressionTree) -> Expression {
   match tree {
-    | ExpressionTree::Leaf(e) => e,
+    | ExpressionTree::Leaf(expression) => expression,
     | ExpressionTree::Branch(op, left, right) => {
       let left_expr = to_expression(*left);
       let right_expr = to_expression(*right);
 
-      let span = (left_expr.get_span().0, right_expr.get_span().1);
+      let (start, _) = left_expr.get_span();
+      let (_, end) = right_expr.get_span();
+
+      let span = (start, end);
 
       Expression::Application(
         span,
@@ -112,6 +115,7 @@ fn create_tree(
   while !tokens.is_empty() {
     let operator = match &tokens[0] {
       | &ExpressionKind::Operator(ref op) => op.clone(),
+      // TODO: Get rid of explicit `panic!`, use proper error handling.
       | _ => panic!("Illegal tree state"),
     };
 
@@ -119,12 +123,12 @@ fn create_tree(
       break;
     }
 
-    let (_tk, item) = create_tree(&tokens[1..], level + 1)?;
+    let (rest, first) = create_tree(&tokens[1..], level + 1)?;
 
-    expressions.push(item);
+    expressions.push(first);
     operators.push(operator);
 
-    tokens = _tk;
+    tokens = rest;
   }
 
   if operators.is_empty() {
