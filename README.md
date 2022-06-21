@@ -15,15 +15,24 @@ Core language stuff:
 - [ ] Haskell/Elm-like syntax.
 - [ ] Hindley–Milner type inference.
 - [ ] Type aliases and ADTs.
-- [ ] Records (use [this paper by Daan Leijen][records-paper] as a reference).
+- [ ] Records (using [this paper by Daan Leijen][records-paper] as a reference).
 - [ ] Pattern matching.
 - [ ] Module system.
 - [ ] Standard library (Prelude).
 - [ ] Diagnostic reporting via [codespan] or [ariadne].
 
+Other goodies I would like to implement as well, mostly related to pattern matching capabilities:
+
+- [ ] Override-like pattern matching.
+- [ ] Function guards.
+- [ ] `where` clauses.
+- [ ] As-patterns.
+- [ ] Compile patterns to efficient decision trees.
+
 These are not as important the ones above, I will do research first and implement them later on:
 
 - [ ] Effect system.
+- [ ] REPL with autocomplete and syntax highlighting.
 - [ ] VM with garbage collection.
 - [ ] Language Server Protocol (LSP).
 - [ ] Infrastructure: package management, tests.
