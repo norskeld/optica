@@ -17,6 +17,7 @@ pub enum Expression {
   Ref(Span, String),
   QualifiedRef(Span, Vec<String>, String),
   Let(Span, Vec<Let>, Box<Expression>),
+  Match(Span, Box<Expression>, Vec<(Pattern, Expression)>),
 }
 
 impl Expression {
@@ -33,6 +34,7 @@ impl Expression {
       | Expression::Ref(span, _) => span,
       | Expression::QualifiedRef(span, _, _) => span,
       | Expression::Let(span, _, _) => span,
+      | Expression::Match(span, _, _) => span,
     }
   }
 }
@@ -109,6 +111,13 @@ impl PartialEq for Expression {
       | Expression::Let(_, lhs_defs, lhs_expr) => {
         if let Expression::Let(_, rhs_defs, rhs_expr) = other {
           lhs_defs == rhs_defs && lhs_expr == rhs_expr
+        } else {
+          false
+        }
+      },
+      | Expression::Match(_, lhs_cond, lhs_branches) => {
+        if let Expression::Match(_, rhs_cond, rhs_branches) = other {
+          lhs_cond == rhs_cond && lhs_branches == rhs_branches
         } else {
           false
         }

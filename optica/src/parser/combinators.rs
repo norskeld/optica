@@ -247,6 +247,19 @@ where
 
 // Readers.
 
+pub fn read_indent(input: Input) -> Result<u32, ParseError> {
+  if let Token::Indent(found) = input.read_forced() {
+    Ok(found)
+  } else {
+    let found = input.read();
+
+    Err(ParseError::ExpectedIndentation {
+      span: input.span(),
+      found,
+    })
+  }
+}
+
 pub fn read_optional_indent(input: Input) -> u32 {
   if let Token::Indent(found) = input.read_forced() {
     found

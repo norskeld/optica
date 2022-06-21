@@ -26,6 +26,7 @@ pub enum Token {
   Pipe,
   RightArrow,
   LeftArrow,
+  FatRightArrow,
   Colon,
   Eof,
 
@@ -49,8 +50,8 @@ pub enum Token {
   ImportKw,
   InfixLeftKw,
   InfixRightKw,
-  CaseKw,
-  OfKw,
+  MatchKw,
+  WithKw,
   InKw,
   TypeKw,
   DataKw,

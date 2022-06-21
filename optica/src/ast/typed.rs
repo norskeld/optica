@@ -59,7 +59,7 @@ pub enum TypedExpression {
     Box<TypedExpression>,
     Box<TypedExpression>,
   ),
-  Case(
+  Match(
     Span,
     Type,
     Box<TypedExpression>,
@@ -78,7 +78,7 @@ impl TypedExpression {
       | TypedExpression::List(span, _, _) => span,
       | TypedExpression::Ref(span, _, _) => span,
       | TypedExpression::If(span, _, _, _, _) => span,
-      | TypedExpression::Case(span, _, _, _) => span,
+      | TypedExpression::Match(span, _, _, _) => span,
       | TypedExpression::Lambda(span, _, _, _) => span,
       | TypedExpression::Application(span, _, _, _) => span,
       | TypedExpression::Let(span, _, _, _) => span,
@@ -92,7 +92,7 @@ impl TypedExpression {
       | TypedExpression::List(_, ty, _) => ty.clone(),
       | TypedExpression::Ref(_, ty, _) => ty.clone(),
       | TypedExpression::If(_, ty, _, _, _) => ty.clone(),
-      | TypedExpression::Case(_, ty, _, _) => ty.clone(),
+      | TypedExpression::Match(_, ty, _, _) => ty.clone(),
       | TypedExpression::Lambda(_, ty, _, _) => ty.clone(),
       | TypedExpression::Application(_, ty, _, _) => ty.clone(),
       | TypedExpression::Let(_, ty, _, _) => ty.clone(),
@@ -131,8 +131,8 @@ impl PartialEq for TypedExpression {
           false
         }
       },
-      | TypedExpression::Case(_, _, lhs_expr, lhs_branches) => {
-        if let TypedExpression::Case(_, _, rhs_expr, rhs_branches) = other {
+      | TypedExpression::Match(_, _, lhs_expr, lhs_branches) => {
+        if let TypedExpression::Match(_, _, rhs_expr, rhs_branches) = other {
           lhs_expr == rhs_expr && lhs_branches == rhs_branches
         } else {
           false

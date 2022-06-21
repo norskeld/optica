@@ -1166,6 +1166,28 @@ fn annotate_expression(
         Box::new(typed_expression),
       )
     },
+    | Expression::Match(span, cond, branches) => {
+      let annotated_expression = annotate_expression(context, cond)?;
+      let mut next_branches = vec![];
+
+      for (branch_pattern, branch_expression) in branches {
+        context.block(|ctx| {
+          let pattern = annotate_pattern(ctx, branch_pattern)?;
+
+          add_pattern_vars_to_context(ctx, &pattern);
+          next_branches.push((pattern, annotate_expression(ctx, branch_expression)?));
+
+          Ok(())
+        })?;
+      }
+
+      TypedExpression::Match(
+        *span,
+        context.next_type(),
+        Box::new(annotated_expression),
+        next_branches,
+      )
+    },
   };
 
   Ok(typed_expression)
@@ -1320,6 +1342,7 @@ fn collect_expression_constraints(
         ty,
         &then_.get_type(),
       ));
+
       constraints.push(Constraint::new(
         typed_expression.get_span(),
         ty,
@@ -1330,7 +1353,7 @@ fn collect_expression_constraints(
       collect_expression_constraints(constraints, then_);
       collect_expression_constraints(constraints, else_);
     },
-    | TypedExpression::Case(span, ty, expression, cases) => {
+    | TypedExpression::Match(span, ty, expression, cases) => {
       collect_expression_constraints(constraints, expression);
 
       for (pattern, expression) in cases {
@@ -1607,7 +1630,7 @@ fn replace_expression_types(
       Box::new(replace_expression_types(sbst, *then_)),
       Box::new(replace_expression_types(sbst, *else_)),
     ),
-    | TypedExpression::Case(span, ty, expression, branches) => TypedExpression::Case(
+    | TypedExpression::Match(span, ty, expression, branches) => TypedExpression::Match(
       span,
       sbst.replace(ty),
       Box::new(replace_expression_types(sbst, *expression)),

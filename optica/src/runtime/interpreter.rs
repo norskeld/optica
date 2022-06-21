@@ -108,7 +108,7 @@ impl Interpreter {
           | _ => Err(InterpreterError::InvalidIfCondition(value.clone()).wrap()),
         }
       },
-      | TypedExpression::Case(_, _, cond, branches) => {
+      | TypedExpression::Match(_, _, cond, branches) => {
         let cond_val = self.eval_expression(cond)?;
 
         for (pattern, expression) in branches {
@@ -396,17 +396,17 @@ impl Interpreter {
     typed_expression: &TypedExpression,
   ) -> HashMap<String, Value> {
     let mut map = HashMap::new();
-    Self::traverse_expr(&mut map, stack, typed_expression);
+    Self::traverse_expression(&mut map, stack, typed_expression);
 
     map
   }
 
-  fn traverse_expr(
+  fn traverse_expression(
     result: &mut HashMap<String, Value>,
     stack: &mut Stack,
     typed_expression: &TypedExpression,
   ) {
-    // TODO: Avoid capturing internal definitions.
+    // TODO: Avoid capturing internal (intrinsic) definitions.
     match typed_expression {
       | TypedExpression::Ref(_, _, name) => {
         if let Some(value) = stack.find(name) {
@@ -415,20 +415,42 @@ impl Interpreter {
       },
       | TypedExpression::Tuple(_, _, expressions) | TypedExpression::List(_, _, expressions) => {
         for expression in expressions {
-          Self::traverse_expr(result, stack, expression);
+          Self::traverse_expression(result, stack, expression);
         }
       },
       | TypedExpression::If(_, _, cond, then_, else_) => {
-        Self::traverse_expr(result, stack, cond.as_ref());
-        Self::traverse_expr(result, stack, then_.as_ref());
-        Self::traverse_expr(result, stack, else_.as_ref());
+        Self::traverse_expression(result, stack, cond.as_ref());
+        Self::traverse_expression(result, stack, then_.as_ref());
+        Self::traverse_expression(result, stack, else_.as_ref());
+      },
+      // TODO: Remove defined variables from captures, case, lambda and let.
+      | TypedExpression::Match(_, _, cond, branches) => {
+        Self::traverse_expression(result, stack, cond.as_ref());
+
+        for (_, branch_expression) in branches {
+          Self::traverse_expression(result, stack, branch_expression);
+        }
       },
       | TypedExpression::Application(_, _, function, input) => {
-        Self::traverse_expr(result, stack, function.as_ref());
-        Self::traverse_expr(result, stack, input.as_ref());
+        Self::traverse_expression(result, stack, function.as_ref());
+        Self::traverse_expression(result, stack, input.as_ref());
       },
       | TypedExpression::Lambda(_, _, _, expression) => {
-        Self::traverse_expr(result, stack, expression.as_ref());
+        Self::traverse_expression(result, stack, expression.as_ref());
+      },
+      | TypedExpression::Let(_, _, let_definitions, let_expression) => {
+        Self::traverse_expression(result, stack, let_expression.as_ref());
+
+        for let_definition in let_definitions {
+          match let_definition {
+            | TypedLet::Definition(definition) => {
+              Self::traverse_expression(result, stack, &definition.expression);
+            },
+            | TypedLet::Pattern(_, expression) => {
+              Self::traverse_expression(result, stack, expression);
+            },
+          }
+        }
       },
       | _ => { /* Ignored. */ },
     }

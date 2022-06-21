@@ -75,6 +75,7 @@ fn binary_operator(input: &[u8]) -> ParseResult<'_, Token> {
       | b"=" => Token::Equals,
       | b"<-" => Token::LeftArrow,
       | b"->" => Token::RightArrow,
+      | b"=>" => Token::FatRightArrow,
       | b"|" => Token::Pipe,
       | _ => Token::BinaryOperator(ident),
     }
@@ -100,8 +101,8 @@ fn identifier(input: &[u8]) -> ParseResult<'_, Token> {
         | b"import" => Token::ImportKw,
         | b"infixl" => Token::InfixLeftKw,
         | b"infixr" => Token::InfixRightKw,
-        | b"case" => Token::CaseKw,
-        | b"of" => Token::OfKw,
+        | b"match" => Token::MatchKw,
+        | b"with" => Token::WithKw,
         | b"type" => Token::TypeKw,
         | b"data" => Token::DataKw,
         | b"as" => Token::AsKw,
@@ -269,6 +270,7 @@ mod tests {
     assert_ok!(token(b"... "), Token::BinaryOperator("...".to_string()));
     assert_ok!(token(b"-> "), Token::RightArrow);
     assert_ok!(token(b"<- "), Token::LeftArrow);
+    assert_ok!(token(b"=> "), Token::FatRightArrow);
     assert_ok!(token(b"<-- "), Token::BinaryOperator("<--".to_string()));
   }
 }

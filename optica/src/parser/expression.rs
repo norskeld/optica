@@ -195,6 +195,19 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
         input,
       )
     },
+    | Token::MatchKw => {
+      let (cond, input) = parse_expr(input.next())?;
+      let input = combinators::expect(Token::WithKw, input)?;
+      let level = combinators::read_indent(input.clone())?;
+      let input = input.enter_level(level);
+      let (branches, input) = combinators::many1(&|input| parse_match_branch(level, input), input)?;
+      let input = input.exit_level(level);
+
+      (
+        Expression::Match((input.pos(), input.pos()), Box::from(cond), branches),
+        input,
+      )
+    },
     | _ => {
       return Err(ParseError::UnmatchedToken {
         span: input.span(),
@@ -205,6 +218,21 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
   };
 
   Ok((expr, input))
+}
+
+fn parse_match_branch(
+  indent: u32,
+  input: Input,
+) -> Result<((Pattern, Expression), Input), ParseError> {
+  let input = combinators::expect_indent(indent, input)?;
+
+  let input = combinators::expect(Token::Pipe, input)?;
+  let (pattern, input) = pattern::parse_pattern_expr(input)?;
+
+  let input = combinators::expect(Token::FatRightArrow, input)?;
+  let (expr, input) = parse_expr(input)?;
+
+  Ok(((pattern, expr), input))
 }
 
 fn parse_let(indent: u32, input: Input) -> Result<(Let, Input), ParseError> {
@@ -660,5 +688,38 @@ mod tests {
         Box::from(Expression::Ref((22, 26), "life".to_string())),
       ),
     );
+  }
+
+  #[test]
+  fn test_match_of() {
+    let code = indoc! {r#"
+      match direction with
+        | Up => "Up"
+        | Down => "Down"
+        | _ => "Nowhere"
+    "#};
+
+    testing::assert_eq(
+      parse_expr,
+      code,
+      Expression::Match(
+        (0, 0),
+        Box::from(Expression::Ref((0, 0), "direction".to_string())),
+        vec![
+          (
+            Pattern::Adt((0, 0), "Up".to_string(), vec![]),
+            Expression::Literal((0, 0), Literal::String("Up".to_string())),
+          ),
+          (
+            Pattern::Adt((0, 0), "Down".to_string(), vec![]),
+            Expression::Literal((0, 0), Literal::String("Down".to_string())),
+          ),
+          (
+            Pattern::Wildcard((0, 0)),
+            Expression::Literal((0, 0), Literal::String("Nowhere".to_string())),
+          ),
+        ],
+      ),
+    )
   }
 }
