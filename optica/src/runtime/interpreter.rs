@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use crate::ast;
 use crate::ast::typed::{
-  Adt, AdtVariant, Declaration, Function, TypedDefinition, TypedExpression, TypedPattern, Value,
+  Adt, AdtVariant, Declaration, Function, TypedDefinition, TypedExpression, TypedLet, TypedPattern,
+  Value,
 };
 use crate::ast::untyped::Type;
 use crate::errors::{InterpreterError, LangError, Wrappable};
@@ -118,6 +119,22 @@ impl Interpreter {
         let input = self.eval_expression(input)?;
 
         self.apply(function, input)
+      },
+      | TypedExpression::Let(_, _, let_defs, let_body) => {
+        for let_def in let_defs {
+          match let_def {
+            | TypedLet::Definition(def) => {
+              let (name, value) = self.eval_definition(def);
+              let value = self.eval_constant(value)?;
+
+              self.stack.add(&name, value);
+            },
+            // TODO: Let patterns.
+            | _ => todo!(),
+          }
+        }
+
+        self.eval_expression(let_body)
       },
     }
   }
@@ -279,6 +296,8 @@ impl Interpreter {
 
     let result = match func {
       | Function::External { function, .. } => {
+        // TODO: This probably should not map to `InterpreterError::BuiltinFunctionError` and just
+        // propagate produced error.
         (function.function)(self, &args).map_err(|_| InterpreterError::BuiltinFunctionError.wrap())
       },
       | Function::Definition {

@@ -39,6 +39,7 @@ pub enum TypedExpression {
   ),
   Lambda(Span, Type, Vec<TypedPattern>, Box<TypedExpression>),
   Application(Span, Type, Box<TypedExpression>, Box<TypedExpression>),
+  Let(Span, Type, Vec<TypedLet>, Box<TypedExpression>),
 }
 
 impl TypedExpression {
@@ -51,6 +52,7 @@ impl TypedExpression {
       | TypedExpression::If(span, _, _, _, _) => span,
       | TypedExpression::Lambda(span, _, _, _) => span,
       | TypedExpression::Application(span, _, _, _) => span,
+      | TypedExpression::Let(span, _, _, _) => span,
     }
   }
 
@@ -63,6 +65,7 @@ impl TypedExpression {
       | TypedExpression::If(_, ty, _, _, _) => ty.clone(),
       | TypedExpression::Lambda(_, ty, _, _) => ty.clone(),
       | TypedExpression::Application(_, ty, _, _) => ty.clone(),
+      | TypedExpression::Let(_, ty, _, _) => ty.clone(),
     }
   }
 }
@@ -119,6 +122,13 @@ impl PartialEq for TypedExpression {
           false
         }
       },
+      | TypedExpression::Let(_, _, lhs_defs, lhs_body) => {
+        if let TypedExpression::Let(_, _, rhs_defs, rhs_body) = other {
+          lhs_defs == rhs_defs && lhs_body == rhs_body
+        } else {
+          false
+        }
+      },
     }
   }
 }
@@ -130,6 +140,13 @@ pub struct TypedDefinition {
   pub name: String,
   pub patterns: Vec<TypedPattern>,
   pub expression: TypedExpression,
+}
+
+/// A let declaration.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypedLet {
+  Definition(TypedDefinition),
+  Pattern(TypedPattern, TypedExpression),
 }
 
 /// A pattern that represents 1 or more function arguments.

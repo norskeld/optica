@@ -1321,6 +1321,9 @@ fn collect_expr_constraints(res: &mut Vec<Constraint>, expr: &TypedExpression) {
       collect_expr_constraints(res, a);
       collect_expr_constraints(res, b);
     },
+    | TypedExpression::Let(_, _, _, expr) => {
+      collect_expr_constraints(res, expr);
+    },
   }
 }
 
@@ -1551,6 +1554,12 @@ fn replace_expr_types(sub: &Substitution, annotated: TypedExpression) -> TypedEx
       sub.replace(ty),
       Box::new(replace_expr_types(sub, *a)),
       Box::new(replace_expr_types(sub, *b)),
+    ),
+    | TypedExpression::Let(span, ty, let_defs, let_expr) => TypedExpression::Let(
+      span,
+      sub.replace(ty),
+      let_defs,
+      Box::new(replace_expr_types(sub, *let_expr)),
     ),
   }
 }
