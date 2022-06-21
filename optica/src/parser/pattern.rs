@@ -1,5 +1,5 @@
-use crate::ast::untyped::Pattern;
-use crate::errors::ParseError;
+use crate::ast::untyped::*;
+use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
@@ -91,10 +91,7 @@ fn parse_pattern_base(input: Input, adt: bool) -> Result<(Pattern, Input), Parse
 
               let input = combinators::expect(Token::RightParen, input)?;
 
-              let adt = Pattern::Tuple(
-                (start, input.pos_end()),
-                utils::vec::create_vec(first, rest),
-              );
+              let adt = Pattern::Tuple((start, input.pos_end()), utils::vec::cons(first, rest));
 
               (adt, input)
             },

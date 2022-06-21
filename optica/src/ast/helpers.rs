@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::vec::IntoIter;
 
 use crate::source::Span;
-use super::untyped::{Expression, Type};
-use super::typed::{Declaration, FunctionId};
+use super::typed::*;
+use super::untyped::*;
 
 /// Global atomic function ID.
 static FUNC_ID: AtomicUsize = AtomicUsize::new(0);
@@ -13,23 +13,23 @@ pub fn function_id() -> FunctionId {
   FUNC_ID.fetch_add(1, Ordering::SeqCst)
 }
 
-pub fn declaration_name(decl: &Declaration) -> &str {
+pub fn declaration_name(decl: &TypedStatement) -> &str {
   match decl {
-    | Declaration::Port(name, ..) => name,
-    | Declaration::Definition(name, ..) => name,
-    | Declaration::Alias(alias, ..) => &alias.name,
-    | Declaration::Adt(name, ..) => name,
-    | Declaration::Infix(name, ..) => name,
+    | TypedStatement::Port(name, ..) => name,
+    | TypedStatement::Definition(name, ..) => name,
+    | TypedStatement::Alias(alias, ..) => &alias.name,
+    | TypedStatement::Adt(name, ..) => name,
+    | TypedStatement::Infix(name, ..) => name,
   }
 }
 
-pub fn declaration_type(decl: &Declaration) -> Option<&Type> {
+pub fn declaration_type(decl: &TypedStatement) -> Option<&Type> {
   match decl {
-    | Declaration::Port(_, ty) => Some(ty),
-    | Declaration::Definition(_, ty) => Some(&ty.header),
-    | Declaration::Alias(_) => None,
-    | Declaration::Adt(_, _) => None,
-    | Declaration::Infix(_, _, ty) => Some(ty),
+    | TypedStatement::Port(_, ty) => Some(ty),
+    | TypedStatement::Definition(_, ty) => Some(&ty.header),
+    | TypedStatement::Alias(_) => None,
+    | TypedStatement::Adt(_, _) => None,
+    | TypedStatement::Infix(_, _, ty) => Some(ty),
   }
 }
 

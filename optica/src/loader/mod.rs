@@ -3,9 +3,9 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::ast::untyped::Module;
-use crate::ast::typed::{Declaration, Value};
-use crate::errors::{LangError, LoaderError, Wrappable};
+use crate::ast::typed::*;
+use crate::ast::untyped::*;
+use crate::errors::*;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::runtime::Runtime;
@@ -22,10 +22,10 @@ pub struct LoadedModule {
 }
 
 #[derive(Clone, Debug)]
-pub struct AnalyzedModule {
+pub struct TypedModule {
   pub name: String,
   pub imports: Vec<ImportedModule>,
-  pub declarations: Vec<Declaration>,
+  pub declarations: Vec<TypedStatement>,
   pub dependencies: Vec<String>,
 }
 
@@ -175,13 +175,13 @@ impl ModuleLoader {
   }
 }
 
-pub fn declaration_name(decl: &Declaration) -> &str {
-  match decl {
-    | Declaration::Alias(alias, ..) => &alias.name,
-    | Declaration::Adt(name, ..) => name,
-    | Declaration::Definition(name, ..) => name,
-    | Declaration::Infix(name, ..) => name,
-    | Declaration::Port(name, ..) => name,
+pub fn declaration_name(typed_statement: &TypedStatement) -> &str {
+  match typed_statement {
+    | TypedStatement::Alias(alias, ..) => &alias.name,
+    | TypedStatement::Adt(name, ..) => name,
+    | TypedStatement::Definition(name, ..) => name,
+    | TypedStatement::Infix(name, ..) => name,
+    | TypedStatement::Port(name, ..) => name,
   }
 }
 

@@ -85,9 +85,7 @@ fn identifier(input: &[u8]) -> ParseResult<'_, Token> {
   map(
     tuple((lower, many0(identifier_char))),
     |(head, tail): (char, Vec<char>)| {
-      let ident = utils::vec::create_vec(head, tail)
-        .into_iter()
-        .collect::<String>();
+      let ident = utils::vec::cons(head, tail).into_iter().collect::<String>();
 
       let bytes = ident.as_bytes();
 
@@ -117,11 +115,7 @@ fn upper_identifier(input: &[u8]) -> ParseResult<'_, Token> {
   map(
     tuple((upper, many0(identifier_char))),
     |(head, tail): (char, Vec<char>)| {
-      Token::UpperIdent(
-        utils::vec::create_vec(head, tail)
-          .into_iter()
-          .collect::<String>(),
-      )
+      Token::UpperIdent(utils::vec::cons(head, tail).into_iter().collect::<String>())
     },
   )(input)
 }

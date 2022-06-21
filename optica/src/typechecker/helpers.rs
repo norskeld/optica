@@ -1,4 +1,4 @@
-use crate::ast::untyped::Type;
+use crate::ast::untyped::*;
 
 pub fn build_func_type(types: &[Type]) -> Type {
   assert!(!types.is_empty());

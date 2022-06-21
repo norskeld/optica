@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::typed::Value;
+use crate::ast::typed::*;
 
 #[derive(Clone, Debug)]
 pub struct Stack {

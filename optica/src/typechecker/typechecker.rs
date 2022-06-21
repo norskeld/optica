@@ -2,17 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::ast;
-use crate::ast::untyped::{
-  AdtExports, Definition, Expression, ModuleExport, ModuleExports, ModuleImport, Pattern,
-  Statement, Type, TypeAlias,
-};
-use crate::ast::typed::{
-  Adt, AdtVariant, Declaration, TypedDefinition, TypedExpression, TypedPattern, Value,
-};
+use crate::ast::untyped::*;
+use crate::ast::typed::*;
 use crate::ast::traverser;
-use crate::errors::{InterpreterError, LangError, LoaderError, TypeError, Wrappable};
+use crate::errors::*;
 use crate::source::{SourceCode, Span};
-use crate::loader::{self, AnalyzedModule, ImportedModule, LoadedModule};
+use crate::loader::{self, *};
 use crate::utils::vec::{self, VecExt};
 use crate::utils::path;
 use super::Context;
@@ -111,17 +106,28 @@ impl Typechecker {
       .set_canonical_type_name(name, canonical.to_string());
   }
 
-  pub fn analyze_statement(&mut self, stmt: &Statement) -> Result<Vec<Declaration>, LangError> {
+  pub fn typecheck_statement(
+    &mut self,
+    stmt: &Statement,
+  ) -> Result<Vec<TypedStatement>, LangError> {
     let statements = match stmt {
-      | Statement::Alias(name, vars, ty) => self.analyze_statement_typealias(name, vars, ty)?,
-      | Statement::Adt(name, vars, variants) => self.analyze_statement_adt(name, vars, variants)?,
-      | Statement::Function(func) => self.analyze_statement_definition(func)?,
-      | Statement::Port(span, name, ty) => self.analyze_statement_port(*span, name, ty)?,
-      | Statement::Infix(_, _, name, def) => {
+      | Statement::Alias(name, vars, ty) => self.typecheck_alias(name, vars, ty)?,
+      | Statement::Adt(name, vars, variants) => self.typecheck_adt(name, vars, variants)?,
+      | Statement::Function(definition) => self.typecheck_definition(definition)?,
+      | Statement::Port(span, name, ty) => self.typecheck_port(*span, name, ty)?,
+      | Statement::Infix(_, _, name, definition_ref) => {
         if let Some(ty) = self.context.get(name) {
-          vec![Declaration::Infix(name.clone(), def.clone(), ty.clone())]
-        } else if let Some(ty) = self.context.get(def) {
-          vec![Declaration::Infix(name.clone(), def.clone(), ty.clone())]
+          vec![TypedStatement::Infix(
+            name.clone(),
+            definition_ref.clone(),
+            ty.clone(),
+          )]
+        } else if let Some(ty) = self.context.get(definition_ref) {
+          vec![TypedStatement::Infix(
+            name.clone(),
+            definition_ref.clone(),
+            ty.clone(),
+          )]
         } else {
           vec![]
         }
@@ -131,31 +137,32 @@ impl Typechecker {
     Ok(statements)
   }
 
-  pub fn analyze_module(
+  pub fn typecheck_module(
     &mut self,
-    modules: &HashMap<String, AnalyzedModule>,
+    modules: &HashMap<String, TypedModule>,
     module: &LoadedModule,
-  ) -> Result<AnalyzedModule, LangError> {
-    let imports = self.analyze_module_imports(modules, &module.ast.imports)?;
+  ) -> Result<TypedModule, LangError> {
+    let imports = self.typecheck_module_imports(modules, &module.ast.imports)?;
 
     // Avoid problems with statement order.
-    for stmt in &module.ast.statements {
-      if let Some(ty) = declared_statement_type(stmt) {
+    for statement in &module.ast.statements {
+      if let Some(ty) = statement_type(statement) {
         self
           .context
-          .set(declared_statement_name(stmt).unwrap(), ty.clone());
+          .set(statement_name(statement).unwrap(), ty.clone());
       }
     }
 
     // Custom behavior for binary operators.
     for statement in &module.ast.statements {
-      if let Statement::Infix(_, _, name, def) = statement {
-        let ty = if let Some(ty) = self.context.get(def) {
+      if let Statement::Infix(_, _, name, definition_ref) = statement {
+        let ty = if let Some(ty) = self.context.get(definition_ref) {
           ty.clone()
         } else {
+          // TODO: Is it?
           unreachable!(
             "Infix operator {} where the function {} doesn't have a type header",
-            name, def
+            name, definition_ref
           );
         };
 
@@ -163,32 +170,30 @@ impl Typechecker {
       }
     }
 
-    let all_declarations = self
-      .analyze_module_declarations(&module.ast.statements)
-      .map_err(|list| {
-        if list.len() == 1 {
-          list.into_iter().next().unwrap()
+    let declarations = self
+      .typecheck_module_statements(&module.ast.statements)
+      .map_err(|errors| {
+        if errors.len() == 1 {
+          errors.into_iter().next().unwrap()
         } else {
-          LangError::List(list)
+          LangError::List(errors)
         }
       })?;
 
-    Ok(AnalyzedModule {
+    Ok(TypedModule {
       name: module.src.name.to_string(),
       dependencies: module.dependencies.clone(),
-      declarations: all_declarations,
+      declarations,
       imports,
     })
   }
-}
 
-impl Typechecker {
-  pub fn analyze_statement_typealias(
+  pub fn typecheck_alias(
     &mut self,
     name: &str,
-    decl_vars: &[String],
+    variables: &[String],
     ty: &Type,
-  ) -> Result<Vec<Declaration>, LangError> {
+  ) -> Result<Vec<TypedStatement>, LangError> {
     let mut used_vars: HashSet<String> = HashSet::new();
 
     traverser::traverse_type(&mut used_vars, ty, &|set, node| {
@@ -197,10 +202,10 @@ impl Typechecker {
       }
     });
 
-    if used_vars.len() < decl_vars.len() {
-      let unused_vars = decl_vars
+    if used_vars.len() < variables.len() {
+      let unused_vars = variables
         .iter()
-        .filter(|t| !used_vars.contains(*t))
+        .filter(|it| !used_vars.contains(*it))
         .cloned()
         .collect::<Vec<String>>();
 
@@ -213,10 +218,10 @@ impl Typechecker {
       ));
     }
 
-    if used_vars.len() > decl_vars.len() {
+    if used_vars.len() > variables.len() {
       let unknown_vars = used_vars
         .into_iter()
-        .filter(|t| !decl_vars.contains(t))
+        .filter(|it| !variables.contains(it))
         .collect::<Vec<String>>();
 
       return Err(LangError::Typechecker(
@@ -228,29 +233,32 @@ impl Typechecker {
       ));
     }
 
-    let decls: Vec<Declaration> = vec![Declaration::Alias(TypeAlias {
+    let decls: Vec<TypedStatement> = vec![TypedStatement::Alias(TypeAlias {
       name: name.to_string(),
-      variables: decl_vars.to_owned(),
+      variables: variables.to_owned(),
       replacement: ty.clone(),
     })];
 
     Ok(decls)
   }
 
-  pub fn analyze_statement_adt(
+  pub fn typecheck_adt(
     &mut self,
     name: &str,
-    decl_vars: &[String],
+    types: &[String],
     variants: &[(Span, String, Vec<Type>)],
-  ) -> Result<Vec<Declaration>, LangError> {
-    let vars: Vec<Type> = decl_vars.iter().map(|var| Type::Var(var.into())).collect();
-    let adt_type = Type::Tag(name.into(), vars);
+  ) -> Result<Vec<TypedStatement>, LangError> {
+    let type_variables = types
+      .iter()
+      .map(|it| Type::Var(it.to_string()))
+      .collect::<Vec<_>>();
 
-    let mut decls = vec![];
+    let adt_type = Type::Tag(name.to_string(), type_variables);
+    let mut declarations = vec![];
 
     // Any error inside the block should be returned after `exit_block()`. We cannot use
-    // `self.env.block()`, because we call `self.check_type()`, it needs an immutable reference to
-    // self and `self.env.block()` already has a mutable reference to self.
+    // `self.context.block()`, because we call `self.check_type()`, it needs an immutable reference
+    // to self and `self.context.block()` already has a mutable reference to self.
     self.context.enter_block();
 
     let adt_variants = {
@@ -292,71 +300,65 @@ impl Typechecker {
       }
 
       let variant_type = if !new_variant_types.is_empty() {
-        helpers::build_func_type(&vec::create_vec_inv(&new_variant_types, adt_type.clone()))
+        helpers::build_func_type(&vec::rcons(&new_variant_types, adt_type.clone()))
       } else {
         adt_type.clone()
       };
 
-      decls.push(Declaration::Port(variant.name.clone(), variant_type));
+      declarations.push(TypedStatement::Port(variant.name.clone(), variant_type));
     }
 
     let adt = Arc::new(Adt {
       name: name.to_owned(),
-      types: decl_vars.to_owned(),
-      variants: adt_variants.map(|(_, a)| a.clone()),
+      types: types.to_owned(),
+      variants: adt_variants.map(|(_, variant)| variant.clone()),
     });
 
-    decls.push(Declaration::Adt(name.to_owned(), adt));
+    declarations.push(TypedStatement::Adt(name.to_string(), adt));
 
-    Ok(decls)
+    Ok(declarations)
   }
 
-  pub fn analyze_statement_port(
+  pub fn typecheck_port(
     &mut self,
     span: Span,
     name: &str,
     ty: &Type,
-  ) -> Result<Vec<Declaration>, LangError> {
+  ) -> Result<Vec<TypedStatement>, LangError> {
     let checked_type = self.check_type(span, ty.clone())?;
 
-    Ok(vec![Declaration::Port(name.to_owned(), checked_type)])
+    Ok(vec![TypedStatement::Port(name.to_string(), checked_type)])
   }
 
-  pub fn analyze_statement_definition(
+  pub fn typecheck_definition(
     &mut self,
     function: &Definition,
-  ) -> Result<Vec<Declaration>, LangError> {
-    let typed_function = self.analyze_definition(function)?;
+  ) -> Result<Vec<TypedStatement>, LangError> {
+    let typed_function = infer_definition_type(&mut self.context, function)
+      .map_err(|it| LangError::Typechecker(self.source.clone(), it))?;
 
-    Ok(vec![Declaration::Definition(
+    Ok(vec![TypedStatement::Definition(
       function.name.clone(),
       typed_function,
     )])
   }
-}
 
-impl Typechecker {
-  pub fn analyze_definition(&mut self, func: &Definition) -> Result<TypedDefinition, LangError> {
-    infer_definition_type(&mut self.context, func)
-      .map_err(|error| LangError::Typechecker(self.source.clone(), error))
-  }
-
-  pub fn analyze_expression(&mut self, expr: &Expression) -> Result<TypedExpression, LangError> {
+  pub fn typecheck_expression(&mut self, expr: &Expression) -> Result<TypedExpression, LangError> {
     infer_expression_type(&mut self.context, expr)
-      .map_err(|e| LangError::Typechecker(self.source.clone(), e))
+      .map_err(|it| LangError::Typechecker(self.source.clone(), it))
   }
 
   pub fn check_type(&self, span: Span, ty: Type) -> Result<Type, LangError> {
     self
       .get_canonical_type(span, self.replace_type_alias(ty))
-      .map_err(|e| LangError::Typechecker(self.source.clone(), e))
+      .map_err(|it| LangError::Typechecker(self.source.clone(), it))
   }
 
   pub fn get_canonical_type(&self, span: Span, ty: Type) -> Result<Type, TypeError> {
     let next_ty = match ty {
       | Type::Unit => Type::Unit,
       | Type::Var(_) => ty,
-      | Type::Tag(name, items) => {
+      | Type::Tag(name, types) => {
         let canonical_name = match self.context.get_canonical_type_name(&name) {
           | Some(name_str) => name_str.to_string(),
           | None => {
@@ -369,21 +371,21 @@ impl Typechecker {
 
         Type::Tag(
           canonical_name,
-          items
+          types
             .into_iter()
             .map(|it| self.get_canonical_type(span, it))
-            .collect::<Result<Vec<Type>, TypeError>>()?,
+            .collect::<Result<Vec<_>, _>>()?,
         )
       },
-      | Type::Function(a, b) => Type::Function(
-        Box::new(self.get_canonical_type(span, *a)?),
-        Box::new(self.get_canonical_type(span, *b)?),
+      | Type::Function(param, rest) => Type::Function(
+        Box::new(self.get_canonical_type(span, *param)?),
+        Box::new(self.get_canonical_type(span, *rest)?),
       ),
       | Type::Tuple(items) => Type::Tuple(
         items
           .into_iter()
           .map(|it| self.get_canonical_type(span, it))
-          .collect::<Result<Vec<Type>, TypeError>>()?,
+          .collect::<Result<Vec<_>, _>>()?,
       ),
     };
 
@@ -392,13 +394,14 @@ impl Typechecker {
 
   pub fn replace_type_alias(&self, ty: Type) -> Type {
     match ty {
-      | Type::Tag(a, b) => {
-        let params: Vec<Type> = b
+      | Type::Tag(name, types) => {
+        let params = types
           .into_iter()
           .map(|it| self.replace_type_alias(it))
-          .collect();
+          .collect::<Vec<_>>();
 
-        if let Some(alias) = self.context.get_type_alias(&a) {
+        if let Some(alias) = self.context.get_type_alias(&name) {
+          // TODO: Add proper error handling.
           assert_eq!(params.len(), alias.variables.len());
 
           let mut map = HashMap::new();
@@ -407,33 +410,36 @@ impl Typechecker {
             map.insert(Type::Var(alias.variables[index].clone()), param.clone());
           }
 
-          let sub = Substitution(map);
-          let new_params: Vec<Type> = params.into_iter().map(|it| sub.replace(it)).collect();
+          let sbst = Substitution(map);
 
-          Type::Tag(a, new_params)
+          let types = params
+            .into_iter()
+            .map(|it| sbst.replace(it))
+            .collect::<Vec<_>>();
+
+          Type::Tag(name, types)
         } else {
-          Type::Tag(a, params)
+          Type::Tag(name, params)
         }
       },
       | Type::Unit => Type::Unit,
-      | Type::Var(a) => Type::Var(a),
-      | Type::Function(a, b) => Type::Function(
-        Box::new(self.replace_type_alias(*a)),
-        Box::new(self.replace_type_alias(*b)),
+      | Type::Var(var) => Type::Var(var),
+      | Type::Function(param, rest) => Type::Function(
+        Box::new(self.replace_type_alias(*param)),
+        Box::new(self.replace_type_alias(*rest)),
       ),
-      | Type::Tuple(a) => Type::Tuple(
-        a.into_iter()
+      | Type::Tuple(types) => Type::Tuple(
+        types
+          .into_iter()
           .map(|it| self.replace_type_alias(it))
           .collect(),
       ),
     }
   }
-}
 
-impl Typechecker {
-  pub fn analyze_module_imports(
+  pub fn typecheck_module_imports(
     &mut self,
-    modules: &HashMap<String, AnalyzedModule>,
+    modules: &HashMap<String, TypedModule>,
     imports: &[ModuleImport],
   ) -> Result<Vec<ImportedModule>, LangError> {
     let mut module_imports = vec![ImportedModule {
@@ -446,7 +452,7 @@ impl Typechecker {
 
     // Add rest of imports.
     for import in imports {
-      self.analyze_import(modules, &mut module_imports, import)?;
+      self.typecheck_import(modules, &mut module_imports, import)?;
     }
 
     Ok(module_imports)
@@ -456,7 +462,7 @@ impl Typechecker {
     &mut self,
     module_name: &str,
     alias: &str,
-    module: &AnalyzedModule,
+    module: &TypedModule,
     result: &mut Vec<ImportedModule>,
   ) {
     for declaration in &module.declarations {
@@ -467,13 +473,13 @@ impl Typechecker {
   fn import_exports(
     &mut self,
     module_name: &str,
-    module: &AnalyzedModule,
+    module: &TypedModule,
     exports: &ModuleExports,
     result: &mut Vec<ImportedModule>,
   ) -> Result<(), LangError> {
     let declarations = match exports {
       | ModuleExports::Just(exp) => {
-        Self::get_exposed_decls(&module.declarations, exp).map_err(Wrappable::wrap)?
+        Self::get_exported_statements(&module.declarations, exp).map_err(Wrappable::wrap)?
       },
       | ModuleExports::All => module.declarations.clone(),
     };
@@ -487,7 +493,7 @@ impl Typechecker {
 
   fn import_declaration(
     &mut self,
-    declaration: &Declaration,
+    declaration: &TypedStatement,
     module_name: &str,
     alias: &str,
     result: &mut Vec<ImportedModule>,
@@ -499,7 +505,7 @@ impl Typechecker {
     };
 
     match declaration {
-      | Declaration::Port(name, ty) => {
+      | TypedStatement::Port(name, ty) => {
         result.push(ImportedModule {
           source: module_name.to_string(),
           source_name: name.clone(),
@@ -508,7 +514,7 @@ impl Typechecker {
 
         self.add_port(&aliased_name, ty.clone());
       },
-      | Declaration::Definition(name, def) => {
+      | TypedStatement::Definition(name, def) => {
         result.push(ImportedModule {
           source: module_name.to_string(),
           source_name: name.clone(),
@@ -517,14 +523,14 @@ impl Typechecker {
 
         self.add_port(&aliased_name, def.header.clone());
       },
-      | Declaration::Alias(alias) => {
+      | TypedStatement::Alias(alias) => {
         self.add_type_alias(alias.clone());
       },
-      | Declaration::Adt(name, _) => {
+      | TypedStatement::Adt(name, _) => {
         self.add_canonical_type_name(&aliased_name, name);
         self.add_canonical_type_name(name, name);
       },
-      | Declaration::Infix(name, _, ty) => {
+      | TypedStatement::Infix(name, _, ty) => {
         result.push(ImportedModule {
           source: module_name.to_string(),
           source_name: name.clone(),
@@ -536,9 +542,9 @@ impl Typechecker {
     }
   }
 
-  fn analyze_import(
+  fn typecheck_import(
     &mut self,
-    modules: &HashMap<String, AnalyzedModule>,
+    modules: &HashMap<String, TypedModule>,
     module_imports: &mut Vec<ImportedModule>,
     import: &ModuleImport,
   ) -> Result<(), LangError> {
@@ -562,10 +568,10 @@ impl Typechecker {
     Ok(())
   }
 
-  pub fn analyze_module_declarations(
+  pub fn typecheck_module_statements(
     &mut self,
     statements: &[Statement],
-  ) -> Result<Vec<Declaration>, Vec<LangError>> {
+  ) -> Result<Vec<TypedStatement>, Vec<LangError>> {
     let mut statements = statements.iter().collect::<Vec<_>>();
 
     // Sort by type.
@@ -580,32 +586,32 @@ impl Typechecker {
     let mut declarations = vec![];
     let mut errors = vec![];
 
-    for stmt in statements {
-      let decls = match self.analyze_statement(stmt) {
-        | Ok(decls) => decls,
+    for statement in statements {
+      let typed_statements = match self.typecheck_statement(statement) {
+        | Ok(statements) => statements,
         | Err(err) => {
           errors.push(err);
           vec![]
         },
       };
 
-      for decl in decls.into_iter() {
-        declarations.push(decl.clone());
+      for typed_statement in typed_statements.into_iter() {
+        declarations.push(typed_statement.clone());
 
-        match decl {
-          | Declaration::Definition(name, def) => {
+        match typed_statement {
+          | TypedStatement::Definition(name, def) => {
             self.add_port(&name, def.header.clone());
           },
-          | Declaration::Port(name, ty) => {
+          | TypedStatement::Port(name, ty) => {
             self.add_port(&name, ty.clone());
           },
-          | Declaration::Alias(alias) => {
+          | TypedStatement::Alias(alias) => {
             self.add_type_alias(alias.clone());
           },
-          | Declaration::Adt(name, adt) => {
+          | TypedStatement::Adt(name, adt) => {
             self.add_canonical_type_name(&name, &adt.name);
           },
-          | Declaration::Infix(name, _, ty) => {
+          | TypedStatement::Infix(name, _, ty) => {
             self.add_port(&name, ty.clone());
           },
         }
@@ -613,24 +619,24 @@ impl Typechecker {
     }
 
     // Replace infix definitions with copies of the referenced function.
-    for decl in declarations.clone() {
-      if let Declaration::Infix(name, infix_def, _) = decl {
-        let mut new_declaration = vec![];
+    for declaration in declarations.clone() {
+      if let TypedStatement::Infix(name, infix_def, _) = declaration {
+        let mut next_declarations = vec![];
 
         for declaration in &declarations {
-          if let Declaration::Definition(def_name, def) = declaration {
-            if def_name == &infix_def {
-              let mut def = def.clone();
+          if let TypedStatement::Definition(definition_name, definition) = declaration {
+            if definition_name == &infix_def {
+              let mut definition = definition.clone();
 
-              def.name = name.to_string();
-              new_declaration.push(Declaration::Definition(name.to_string(), def));
+              definition.name = name.to_string();
+              next_declarations.push(TypedStatement::Definition(name.to_string(), definition));
 
               break;
             }
           }
         }
 
-        declarations.extend(new_declaration);
+        declarations.extend(next_declarations);
       }
     }
 
@@ -641,54 +647,56 @@ impl Typechecker {
     }
   }
 
-  fn get_exposed_decls(
-    all_declarations: &[Declaration],
-    exposed: &[ModuleExport],
-  ) -> Result<Vec<Declaration>, InterpreterError> {
-    let mut exposed_declarations = Vec::new();
+  fn get_exported_statements(
+    typed_statements: &[TypedStatement],
+    exports: &[ModuleExport],
+  ) -> Result<Vec<TypedStatement>, InterpreterError> {
+    let mut exported_statements = Vec::new();
 
-    for exp in exposed.iter() {
-      match exp {
-        | ModuleExport::Adt(name, adt_exp) => {
-          match adt_exp {
+    for export in exports.iter() {
+      match export {
+        | ModuleExport::Adt(name, adt_exports) => {
+          match adt_exports {
             | AdtExports::Just(variants) => {
-              for it in all_declarations.iter() {
-                let (variant_name, ty) = match it {
-                  | Declaration::Definition(variant_name, def) => (variant_name, &def.header),
-                  | Declaration::Port(variant_name, ty) => (variant_name, ty),
+              for typed_statement in typed_statements.iter() {
+                let (variant_name, ty) = match typed_statement {
+                  | TypedStatement::Definition(variant_name, definition) => {
+                    (variant_name, &definition.header)
+                  },
+                  | TypedStatement::Port(variant_name, ty) => (variant_name, ty),
                   | _ => continue,
                 };
 
                 if variants.contains(variant_name) {
-                  if let Type::Tag(tag_name, _) = Self::get_func_return(ty) {
+                  if let Type::Tag(tag_name, _) = Self::get_function_return_type(ty) {
                     if &tag_name == name {
-                      exposed_declarations.push(it.clone());
+                      exported_statements.push(typed_statement.clone());
                     }
                   }
                 }
               }
             },
             | AdtExports::All => {
-              for declaration in all_declarations.iter() {
-                let ty = match declaration {
-                  | Declaration::Definition(_, def) => &def.header,
-                  | Declaration::Port(_, ty) => ty,
+              for typed_statement in typed_statements.iter() {
+                let ty = match typed_statement {
+                  | TypedStatement::Definition(_, definition) => &definition.header,
+                  | TypedStatement::Port(_, ty) => ty,
                   | _ => continue,
                 };
 
-                if let Type::Tag(tag_name, _) = Self::get_func_return(ty) {
+                if let Type::Tag(tag_name, _) = Self::get_function_return_type(ty) {
                   if &tag_name == name {
-                    exposed_declarations.push(declaration.clone());
+                    exported_statements.push(typed_statement.clone());
                   }
                 }
               }
             },
           }
 
-          let declaration = all_declarations
+          let next_statement = typed_statements
             .iter()
             .find(|decl| {
-              if let Declaration::Adt(adt_name, _) = decl {
+              if let TypedStatement::Adt(adt_name, _) = decl {
                 adt_name == name
               } else {
                 false
@@ -696,18 +704,18 @@ impl Typechecker {
             })
             .cloned()
             .ok_or_else(|| {
-              InterpreterError::MissingExposing(name.clone(), all_declarations.to_owned())
+              InterpreterError::MissingExposing(name.clone(), typed_statements.to_owned())
             })?;
 
-          exposed_declarations.push(declaration);
+          exported_statements.push(next_statement);
         },
         | ModuleExport::Type(name) => {
-          let declaration = all_declarations
+          let next_statement = typed_statements
             .iter()
-            .find(|decl| {
-              if let Declaration::Alias(alias) = decl {
+            .find(|typed_statement| {
+              if let TypedStatement::Alias(alias) = typed_statement {
                 &alias.name == name
-              } else if let Declaration::Adt(adt_name, _) = decl {
+              } else if let TypedStatement::Adt(adt_name, _) = typed_statement {
                 adt_name == name
               } else {
                 false
@@ -715,60 +723,60 @@ impl Typechecker {
             })
             .cloned()
             .ok_or_else(|| {
-              InterpreterError::MissingExposing(name.clone(), all_declarations.to_owned())
+              InterpreterError::MissingExposing(name.clone(), typed_statements.to_owned())
             })?;
 
-          exposed_declarations.push(declaration);
+          exported_statements.push(next_statement);
         },
         | ModuleExport::BinaryOperator(name) => {
-          let declaration = all_declarations
+          let next_statement = typed_statements
             .iter()
-            .find(|decl| {
-              if let Declaration::Definition(def_name, _) = decl {
-                def_name == name
+            .find(|typed_statement| {
+              if let TypedStatement::Definition(definition_name, _) = typed_statement {
+                definition_name == name
               } else {
                 false
               }
             })
             .cloned();
 
-          if let Some(decl) = declaration {
-            exposed_declarations.push(decl);
+          if let Some(it) = next_statement {
+            exported_statements.push(it);
           }
         },
         | ModuleExport::Function(name) => {
-          let declaration = all_declarations
+          let next_statement = typed_statements
             .iter()
-            .find(|decl| {
-              if let Declaration::Definition(def_name, _) = decl {
-                def_name == name
+            .find(|typed_statement| {
+              if let TypedStatement::Definition(definition_name, _) = typed_statement {
+                definition_name == name
               } else {
                 false
               }
             })
             .cloned()
             .ok_or_else(|| {
-              InterpreterError::MissingExposing(name.clone(), all_declarations.to_owned())
+              InterpreterError::MissingExposing(name.clone(), typed_statements.to_owned())
             })?;
 
-          exposed_declarations.push(declaration);
+          exported_statements.push(next_statement);
         },
       }
     }
 
-    Ok(exposed_declarations)
+    Ok(exported_statements)
   }
 
-  fn get_func_return(ty: &Type) -> Type {
-    if let Type::Function(_, ty) = ty {
-      Self::get_func_return(&*ty)
+  fn get_function_return_type(ty: &Type) -> Type {
+    if let Type::Function(_, rest) = ty {
+      Self::get_function_return_type(&*rest)
     } else {
       ty.clone()
     }
   }
 }
 
-fn declared_statement_type(stmt: &Statement) -> Option<&Type> {
+fn statement_type(stmt: &Statement) -> Option<&Type> {
   match stmt {
     | Statement::Alias(_, _, _) => None,
     | Statement::Adt(_, _, _) => None,
@@ -784,7 +792,7 @@ fn declared_statement_type(stmt: &Statement) -> Option<&Type> {
   }
 }
 
-fn declared_statement_name(stmt: &Statement) -> Option<&str> {
+fn statement_name(stmt: &Statement) -> Option<&str> {
   match stmt {
     | Statement::Alias(_, _, _) => None,
     | Statement::Adt(_, _, _) => None,
@@ -798,12 +806,13 @@ fn unpack_types(ty: &Type) -> Vec<Type> {
   let mut current = ty.clone();
   let mut components = vec![];
 
-  while let Type::Function(a, b) = current {
-    components.push((*a).clone());
-    current = (*b).clone();
+  while let Type::Function(param, rest) = current {
+    components.push((*param).clone());
+    current = (*rest).clone();
   }
 
   components.push(current.clone());
+
   components
 }
 
@@ -815,7 +824,7 @@ fn infer_expression_type(
 
   let (substitution, annotated_expr) = env.block(|env| {
     // Type annotation.
-    let annotated_expr = annotate_expr(env, expr)?;
+    let annotated_expr = annotate_expression(env, expr)?;
 
     // Collect constraints.
     collect_expr_constraints(&mut constraints, &annotated_expr);
@@ -838,118 +847,123 @@ fn infer_expression_type(
 }
 
 fn infer_definition_type(
-  env: &mut Context,
-  func: &Definition,
+  context: &mut Context,
+  definition: &Definition,
 ) -> Result<TypedDefinition, TypeError> {
   let mut constraints = vec![];
 
   // Exhaustive patterns?
-  let (substitution, func_type, annotated_patterns, annotated_expr) = env.block(|env| {
-    // Type Annotation.
-    let func_type = env.next_type();
+  let (substitution, definition_type, annotated_patterns, annotated_expression) =
+    context.block(|ctx| {
+      // Type Annotation.
+      let definition_type = ctx.next_type();
+      let mut annotated_patterns = vec![];
 
-    env.set(&func.name, func_type.clone());
+      ctx.set(&definition.name, definition_type.clone());
 
-    let mut annotated_patterns = vec![];
+      for pattern in &definition.patterns {
+        annotated_patterns.push(annotate_pattern(ctx, pattern)?);
+      }
 
-    for pattern in &func.patterns {
-      annotated_patterns.push(annotate_pattern(env, pattern)?);
-    }
+      for pattern in &annotated_patterns {
+        add_pattern_vars_to_env(ctx, pattern);
+      }
 
-    for pattern in &annotated_patterns {
-      add_pattern_vars_to_env(env, pattern);
-    }
+      let annotated_expr = annotate_expression(ctx, &definition.expression)?;
 
-    let annotated_expr = annotate_expr(env, &func.expression)?;
+      // Collect constraints.
+      if let Some(ty) = &definition.header {
+        let safe_ty = update_type_variables(ctx, &mut HashMap::new(), ty.clone());
 
-    // Collect constraints.
-    if let Some(ty) = &func.header {
-      let safe_ty = update_type_variables(env, &mut HashMap::new(), ty.clone());
+        collect_type_definition_constraints(
+          &mut constraints,
+          &safe_ty,
+          &annotated_patterns,
+          &annotated_expr,
+        );
+      };
 
-      collect_type_definition_constraints(
-        &mut constraints,
-        &safe_ty,
-        &annotated_patterns,
-        &annotated_expr,
-      );
-    };
+      for pattern in &annotated_patterns {
+        collect_pattern_constraints(&mut constraints, pattern);
+      }
 
-    for pat in &annotated_patterns {
-      collect_pattern_constraints(&mut constraints, pat);
-    }
+      collect_expr_constraints(&mut constraints, &annotated_expr);
 
-    collect_expr_constraints(&mut constraints, &annotated_expr);
+      // Function type.
+      let mut func_types = annotated_patterns
+        .iter()
+        .map(|it| it.get_type())
+        .collect::<Vec<_>>();
 
-    // Function type.
-    let mut func_types: Vec<Type> = annotated_patterns
-      .iter()
-      .map(|pattern| pattern.get_type())
-      .collect();
+      func_types.push(annotated_expr.get_type());
 
-    func_types.push(annotated_expr.get_type());
+      constraints.push(Constraint::new(
+        annotated_expr.get_span(),
+        &definition_type,
+        &ast::type_func(func_types),
+      ));
 
-    constraints.push(Constraint::new(
-      annotated_expr.get_span(),
-      &func_type,
-      &ast::type_func(func_types),
-    ));
+      // Constraint solutions.
+      let substitution = match unify_constraints(&constraints) {
+        | Ok(sbst) => sbst,
+        | Err(error) => {
+          return Err(error);
+        },
+      };
 
-    // Constraint solutions.
-    let substitution = match unify_constraints(&constraints) {
-      | Ok(sub) => sub,
-      | Err(e) => {
-        return Err(e);
-      },
-    };
-
-    Ok((substitution, func_type, annotated_patterns, annotated_expr))
-  })?;
+      Ok((
+        substitution,
+        definition_type,
+        annotated_patterns,
+        annotated_expr,
+      ))
+    })?;
 
   // Apply solution.
-  let res_expr = replace_expr_types(&substitution, annotated_expr);
-  let res_patterns: Vec<TypedPattern> = annotated_patterns
+  let definition_expression = replace_expr_types(&substitution, annotated_expression);
+  let definition_patterns = annotated_patterns
     .into_iter()
-    .map(|pat| replace_pattern_types(&substitution, pat))
-    .collect();
+    .map(|it| replace_pattern_types(&substitution, it))
+    .collect::<Vec<_>>();
 
-  let def_type = substitution.replace(func_type);
+  let definition_type = substitution.replace(definition_type);
 
   Ok(TypedDefinition {
-    header: def_type,
-    name: func.name.to_string(),
-    patterns: res_patterns,
-    expression: res_expr,
+    header: definition_type,
+    name: definition.name.to_string(),
+    patterns: definition_patterns,
+    expression: definition_expression,
   })
 }
 
-fn update_type_variables(env: &mut Context, map: &mut HashMap<String, Type>, ty: Type) -> Type {
+fn update_type_variables(context: &mut Context, map: &mut HashMap<String, Type>, ty: Type) -> Type {
   match ty {
     | Type::Unit => Type::Unit,
     | Type::Var(name) => match map.get(&name).cloned() {
       | Some(var) => var,
       | None => {
         let new_ty = if name.starts_with("comparable") {
-          env.next_comparable_type()
+          context.next_comparable_type()
         } else if name.starts_with("appendable") {
-          env.next_appendable_type()
+          context.next_appendable_type()
         } else if name.starts_with("number") {
-          env.next_number_type()
+          context.next_number_type()
         } else {
-          env.next_type()
+          context.next_type()
         };
 
         map.insert(name, new_ty.clone());
         new_ty
       },
     },
-    | Type::Function(a, b) => Type::Function(
-      Box::new(update_type_variables(env, map, *a)),
-      Box::new(update_type_variables(env, map, *b)),
+    | Type::Function(param, rest) => Type::Function(
+      Box::new(update_type_variables(context, map, *param)),
+      Box::new(update_type_variables(context, map, *rest)),
     ),
     | Type::Tag(name, items) => {
       let vec: Vec<Type> = items
         .into_iter()
-        .map(|e| update_type_variables(env, map, e))
+        .map(|it| update_type_variables(context, map, it))
         .collect();
 
       Type::Tag(name, vec)
@@ -957,7 +971,7 @@ fn update_type_variables(env: &mut Context, map: &mut HashMap<String, Type>, ty:
     | Type::Tuple(items) => {
       let vec: Vec<Type> = items
         .into_iter()
-        .map(|e| update_type_variables(env, map, e))
+        .map(|it| update_type_variables(context, map, it))
         .collect();
 
       Type::Tuple(vec)
@@ -965,20 +979,20 @@ fn update_type_variables(env: &mut Context, map: &mut HashMap<String, Type>, ty:
   }
 }
 
-fn annotate_pattern(env: &mut Context, pattern: &Pattern) -> Result<TypedPattern, TypeError> {
+fn annotate_pattern(context: &mut Context, pattern: &Pattern) -> Result<TypedPattern, TypeError> {
   let typed = match pattern {
     | Pattern::Var(span, name) => {
-      if env.get(name).is_some() {
+      if context.get(name).is_some() {
         return Err(TypeError::VariableNameShadowed {
           span: pattern.span(),
           name: name.clone(),
         });
       }
 
-      TypedPattern::Var(*span, env.next_type(), name.clone())
+      TypedPattern::Var(*span, context.next_type(), name.clone())
     },
     | Pattern::Adt(span, name, items) => {
-      let adt_type = match env.get(name) {
+      let adt_type = match context.get(name) {
         | Some(ty) => ty.clone(),
         | None => {
           return Err(TypeError::MissingDefinition {
@@ -988,15 +1002,15 @@ fn annotate_pattern(env: &mut Context, pattern: &Pattern) -> Result<TypedPattern
         },
       };
 
-      let adt_type = update_type_variables(env, &mut HashMap::new(), adt_type);
+      let adt_type = update_type_variables(context, &mut HashMap::new(), adt_type);
 
       TypedPattern::Adt(
         *span,
-        env.next_type(),
+        context.next_type(),
         adt_type,
         items
           .iter()
-          .map(|e| annotate_pattern(env, e))
+          .map(|it| annotate_pattern(context, it))
           .collect::<Result<_, _>>()?,
       )
     },
@@ -1004,33 +1018,33 @@ fn annotate_pattern(env: &mut Context, pattern: &Pattern) -> Result<TypedPattern
     | Pattern::Unit(span) => TypedPattern::Unit(*span),
     | Pattern::Tuple(span, items) => TypedPattern::Tuple(
       *span,
-      env.next_type(),
+      context.next_type(),
       items
         .iter()
-        .map(|e| annotate_pattern(env, e))
+        .map(|it| annotate_pattern(context, it))
         .collect::<Result<_, _>>()?,
     ),
-    | Pattern::List(span, items) => TypedPattern::List(
+    | Pattern::List(span, patterns) => TypedPattern::List(
       *span,
-      env.next_type(),
-      items
+      context.next_type(),
+      patterns
         .iter()
-        .map(|e| annotate_pattern(env, e))
+        .map(|it| annotate_pattern(context, it))
         .collect::<Result<_, _>>()?,
     ),
     | Pattern::BinaryOperator(span, op, a, b) => TypedPattern::BinaryOperator(
       *span,
-      env.next_type(),
+      context.next_type(),
       op.clone(),
-      Box::new(annotate_pattern(env, a)?),
-      Box::new(annotate_pattern(env, b)?),
+      Box::new(annotate_pattern(context, a)?),
+      Box::new(annotate_pattern(context, b)?),
     ),
-    | Pattern::LitInt(span, val) => TypedPattern::LitInt(*span, *val),
-    | Pattern::LitString(span, val) => TypedPattern::LitString(*span, val.clone()),
-    | Pattern::LitChar(span, val) => TypedPattern::LitChar(*span, *val),
-    | Pattern::Alias(span, pat, name) => {
-      let ty = annotate_pattern(env, pat)?;
-      env.set(name, ty.get_type());
+    | Pattern::LitInt(span, value) => TypedPattern::LitInt(*span, *value),
+    | Pattern::LitString(span, value) => TypedPattern::LitString(*span, value.clone()),
+    | Pattern::LitChar(span, value) => TypedPattern::LitChar(*span, *value),
+    | Pattern::Alias(span, pattern, name) => {
+      let ty = annotate_pattern(context, pattern)?;
+      context.set(name, ty.get_type());
 
       TypedPattern::Alias(*span, ty.get_type(), Box::new(ty), name.clone())
     },
@@ -1039,12 +1053,15 @@ fn annotate_pattern(env: &mut Context, pattern: &Pattern) -> Result<TypedPattern
   Ok(typed)
 }
 
-fn annotate_expr(env: &mut Context, expr: &Expression) -> Result<TypedExpression, TypeError> {
-  let te = match expr {
+fn annotate_expression(
+  context: &mut Context,
+  expression: &Expression,
+) -> Result<TypedExpression, TypeError> {
+  let typed_expression = match expression {
     | Expression::QualifiedRef(span, base, name) => {
       let name = path::qualified_name(base, name);
 
-      let ty = env
+      let ty = context
         .get(&name)
         .cloned()
         .ok_or_else(|| TypeError::MissingDefinition {
@@ -1052,12 +1069,12 @@ fn annotate_expr(env: &mut Context, expr: &Expression) -> Result<TypedExpression
           name: name.to_string(),
         })?;
 
-      let ty = update_type_variables(env, &mut HashMap::new(), ty);
+      let ty = update_type_variables(context, &mut HashMap::new(), ty);
 
       TypedExpression::Ref(*span, ty, name)
     },
     | Expression::Ref(span, name) => {
-      let ty = env
+      let ty = context
         .get(name)
         .cloned()
         .ok_or_else(|| TypeError::MissingDefinition {
@@ -1068,89 +1085,90 @@ fn annotate_expr(env: &mut Context, expr: &Expression) -> Result<TypedExpression
       let ty = if let Type::Var(_) = &ty {
         ty
       } else {
-        update_type_variables(env, &mut HashMap::new(), ty)
+        update_type_variables(context, &mut HashMap::new(), ty)
       };
 
       TypedExpression::Ref(*span, ty, name.clone())
     },
-    | Expression::Literal(span, lit) => {
-      let value: Value = lit.clone().into();
+    | Expression::Literal(span, literal) => {
+      let value: Value = literal.clone().into();
 
       if let Value::Number(_) = &value {
-        TypedExpression::Const(*span, env.next_number_type(), value)
+        TypedExpression::Const(*span, context.next_number_type(), value)
       } else {
         TypedExpression::Const(*span, value.get_type(), value)
       }
     },
-    | Expression::Unit(span) => TypedExpression::Const(*span, env.next_type(), Value::Unit),
-    | Expression::Tuple(span, exprs) => {
-      let exprs = exprs
+    | Expression::Unit(span) => TypedExpression::Const(*span, context.next_type(), Value::Unit),
+    | Expression::Tuple(span, expressions) => {
+      let expressions = expressions
         .iter()
-        .map(|e| annotate_expr(env, e))
+        .map(|it| annotate_expression(context, it))
         .collect::<Result<Vec<_>, TypeError>>()?;
 
-      TypedExpression::Tuple(*span, env.next_type(), exprs)
+      TypedExpression::Tuple(*span, context.next_type(), expressions)
     },
-    | Expression::List(span, exprs) => {
-      let exprs = exprs
+    | Expression::List(span, expressions) => {
+      let expressions = expressions
         .iter()
-        .map(|e| annotate_expr(env, e))
+        .map(|it| annotate_expression(context, it))
         .collect::<Result<Vec<_>, TypeError>>()?;
 
-      TypedExpression::List(*span, env.next_type(), exprs)
+      TypedExpression::List(*span, context.next_type(), expressions)
     },
-    | Expression::If(span, cond_expr, then_expr, else_expr) => TypedExpression::If(
+    | Expression::If(span, cond, then_, else_) => TypedExpression::If(
       *span,
-      env.next_type(),
-      Box::new(annotate_expr(env, cond_expr)?),
-      Box::new(annotate_expr(env, then_expr)?),
-      Box::new(annotate_expr(env, else_expr)?),
+      context.next_type(),
+      Box::new(annotate_expression(context, cond)?),
+      Box::new(annotate_expression(context, then_)?),
+      Box::new(annotate_expression(context, else_)?),
     ),
-    | Expression::Lambda(span, patterns, expr) => {
+    | Expression::Lambda(span, patterns, expression) => {
       let patterns = patterns
         .iter()
-        .map(|pattern| annotate_pattern(env, pattern))
+        .map(|it| annotate_pattern(context, it))
         .collect::<Result<Vec<_>, TypeError>>()?;
 
-      let expr = env.block(|env| {
-        for pattern in &patterns {
-          add_pattern_vars_to_env(env, pattern);
-        }
+      let expr = context.block(|ctx| {
+        patterns
+          .iter()
+          .for_each(|it| add_pattern_vars_to_env(ctx, it));
 
-        annotate_expr(env, expr)
+        annotate_expression(ctx, expression)
       })?;
 
-      TypedExpression::Lambda(*span, env.next_type(), patterns, Box::new(expr))
+      TypedExpression::Lambda(*span, context.next_type(), patterns, Box::new(expr))
     },
     | Expression::Application(span, a, b) => TypedExpression::Application(
       *span,
-      env.next_type(),
-      Box::new(annotate_expr(env, a)?),
-      Box::new(annotate_expr(env, b)?),
+      context.next_type(),
+      Box::new(annotate_expression(context, a)?),
+      Box::new(annotate_expression(context, b)?),
     ),
-    | Expression::OperatorChain(span, exprs, ops) => match fold::create_expression_tree(exprs, ops)
-    {
-      | Ok(tree) => annotate_expr(env, &fold::to_expression(tree))?,
-      | Err(err) => {
-        let message = match err {
-          | ExpressionTreeError::InvalidInput => "Invalid input".to_string(),
-          | ExpressionTreeError::AssociativityError => "Associativity error".to_string(),
-          | ExpressionTreeError::InternalError(msg) => format!("Internal error: {}", msg),
-        };
+    | Expression::OperatorChain(span, expressions, operators) => {
+      match fold::create_expression_tree(expressions, operators) {
+        | Ok(tree) => annotate_expression(context, &fold::to_expression(tree))?,
+        | Err(err) => {
+          let message = match err {
+            | ExpressionTreeError::InvalidInput => "Invalid input".to_string(),
+            | ExpressionTreeError::AssociativityError => "Associativity error".to_string(),
+            | ExpressionTreeError::InternalError(msg) => format!("Internal error: {}", msg),
+          };
 
-        return Err(TypeError::InvalidOperandChain {
-          span: *span,
-          message,
-        });
-      },
+          return Err(TypeError::InvalidOperandChain {
+            span: *span,
+            message,
+          });
+        },
+      }
     },
   };
 
-  Ok(te)
+  Ok(typed_expression)
 }
 
 fn collect_type_definition_constraints(
-  res: &mut Vec<Constraint>,
+  constraints: &mut Vec<Constraint>,
   ty: &Type,
   patterns: &[TypedPattern],
   expr: &TypedExpression,
@@ -1158,6 +1176,7 @@ fn collect_type_definition_constraints(
   let list = unpack_types(ty);
 
   if list.len() <= patterns.len() {
+    // TODO: Add proper error handling.
     panic!(
       "Too many patterns: {} patterns and {} arguments",
       patterns.len(),
@@ -1168,7 +1187,7 @@ fn collect_type_definition_constraints(
   let mut index = 0;
 
   while index < patterns.len() {
-    res.push(Constraint::new(
+    constraints.push(Constraint::new(
       patterns[index].get_span(),
       &patterns[index].get_type(),
       &list[index],
@@ -1177,163 +1196,162 @@ fn collect_type_definition_constraints(
     index += 1;
   }
 
-  let ret: Vec<_> = list[index..].to_vec();
+  let types: Vec<_> = list[index..].to_vec();
 
-  res.push(Constraint::new(
+  constraints.push(Constraint::new(
     expr.get_span(),
-    &ast::type_func(ret),
+    &ast::type_func(types),
     &expr.get_type(),
   ));
 }
 
-fn collect_pattern_constraints(res: &mut Vec<Constraint>, pat: &TypedPattern) {
-  match pat {
-    | TypedPattern::Var(_, _, _) => {},
-    | TypedPattern::Adt(_, ty, ctor_type, items) => {
+fn collect_pattern_constraints(constraints: &mut Vec<Constraint>, typed_pattern: &TypedPattern) {
+  match typed_pattern {
+    | TypedPattern::Adt(_, ty, ctor_type, patterns) => {
+      // TODO: Get rid of `unwrap`.
       let adt_type = unpack_types(ctor_type).into_iter().last().unwrap();
-
       let mut ctor = vec![];
 
-      for arg in items {
-        ctor.push(arg.get_type());
+      for pattern in patterns {
+        ctor.push(pattern.get_type());
       }
 
       ctor.push(adt_type.clone());
 
-      res.push(Constraint::new(
-        pat.get_span(),
+      constraints.push(Constraint::new(
+        typed_pattern.get_span(),
         ctor_type,
         &ast::type_func(ctor),
       ));
 
-      res.push(Constraint::new(pat.get_span(), ty, &adt_type));
-      items.for_each(|it| collect_pattern_constraints(res, it));
+      constraints.push(Constraint::new(typed_pattern.get_span(), ty, &adt_type));
+      patterns.for_each(|it| collect_pattern_constraints(constraints, it));
     },
-    | TypedPattern::Wildcard(_) => {},
-    | TypedPattern::Unit(_) => {},
     | TypedPattern::Tuple(_, ty, items) => {
-      res.push(Constraint::new(
-        pat.get_span(),
+      constraints.push(Constraint::new(
+        typed_pattern.get_span(),
         ty,
-        &Type::Tuple(items.map(|e| e.get_type())),
+        &Type::Tuple(items.map(|it| it.get_type())),
       ));
 
-      items.for_each(|it| collect_pattern_constraints(res, it));
+      items.for_each(|it| collect_pattern_constraints(constraints, it));
     },
-    | TypedPattern::List(_, ty, items) => {
-      items.for_each(|it| {
-        res.push(Constraint::new(
-          pat.get_span(),
+    | TypedPattern::List(_, ty, patterns) => {
+      patterns.for_each(|it| {
+        constraints.push(Constraint::new(
+          typed_pattern.get_span(),
           ty,
           &ast::type_list(it.get_type()),
         ));
 
-        collect_pattern_constraints(res, it);
+        collect_pattern_constraints(constraints, it);
       });
     },
     | TypedPattern::BinaryOperator(_, ty, op, a, b) => {
       assert_eq!("::", op.as_str());
 
-      res.push(Constraint::new(
-        pat.get_span(),
+      constraints.push(Constraint::new(
+        typed_pattern.get_span(),
         ty,
         &ast::type_list(a.get_type()),
       ));
 
-      res.push(Constraint::new(
-        pat.get_span(),
+      constraints.push(Constraint::new(
+        typed_pattern.get_span(),
         &b.get_type(),
         &ast::type_list(a.get_type()),
       ));
 
-      collect_pattern_constraints(res, a);
-      collect_pattern_constraints(res, b);
+      collect_pattern_constraints(constraints, a);
+      collect_pattern_constraints(constraints, b);
     },
-    | TypedPattern::LitInt(_, _) => {},
-    | TypedPattern::LitString(_, _) => {},
-    | TypedPattern::LitChar(_, _) => {},
-    | TypedPattern::Alias(_, _, p, _) => {
-      collect_pattern_constraints(res, p);
+    | TypedPattern::Alias(_, _, pattern, _) => {
+      collect_pattern_constraints(constraints, pattern);
     },
+    | TypedPattern::Var(_, _, _)
+    | TypedPattern::Unit(_)
+    | TypedPattern::Wildcard(_)
+    | TypedPattern::LitInt(_, _)
+    | TypedPattern::LitString(_, _)
+    | TypedPattern::LitChar(_, _) => { /* Ignored */ },
   }
 }
 
-fn collect_expr_constraints(res: &mut Vec<Constraint>, expr: &TypedExpression) {
+fn collect_expr_constraints(constraints: &mut Vec<Constraint>, expr: &TypedExpression) {
   match expr {
-    | TypedExpression::Ref(_, _, _) => { /* ignore */ },
-    | TypedExpression::Const(_, _, _) => { /* ignore */ },
-    | TypedExpression::Tuple(_, ty, exprs) => {
-      res.push(Constraint::new(
+    | TypedExpression::Tuple(_, ty, expressions) => {
+      constraints.push(Constraint::new(
         expr.get_span(),
         ty,
-        &Type::Tuple(exprs.map(|expr| expr.get_type())),
+        &Type::Tuple(expressions.map(|it| it.get_type())),
       ));
 
-      for expr in exprs {
-        collect_expr_constraints(res, expr);
+      for expression in expressions {
+        collect_expr_constraints(constraints, expression);
       }
     },
-    | TypedExpression::List(_, ty, exprs) => {
-      for expr in exprs {
-        res.push(Constraint::new(
-          expr.get_span(),
+    | TypedExpression::List(_, ty, expressions) => {
+      for expression in expressions {
+        constraints.push(Constraint::new(
+          expression.get_span(),
           ty,
-          &ast::type_list(expr.get_type()),
+          &ast::type_list(expression.get_type()),
         ));
 
-        collect_expr_constraints(res, expr);
+        collect_expr_constraints(constraints, expression);
       }
     },
-    | TypedExpression::If(_, ty, a, b, c) => {
-      res.push(Constraint::new(
+    | TypedExpression::If(_, ty, cond, then_, else_) => {
+      constraints.push(Constraint::new(
         expr.get_span(),
-        &a.get_type(),
+        &cond.get_type(),
         &ast::type_bool(),
       ));
 
-      res.push(Constraint::new(expr.get_span(), ty, &b.get_type()));
-      res.push(Constraint::new(expr.get_span(), ty, &c.get_type()));
+      constraints.push(Constraint::new(expr.get_span(), ty, &then_.get_type()));
+      constraints.push(Constraint::new(expr.get_span(), ty, &else_.get_type()));
 
-      collect_expr_constraints(res, a);
-      collect_expr_constraints(res, b);
-      collect_expr_constraints(res, c);
+      collect_expr_constraints(constraints, cond);
+      collect_expr_constraints(constraints, then_);
+      collect_expr_constraints(constraints, else_);
     },
-    | TypedExpression::Case(span, ty, expr, cases) => {
-      collect_expr_constraints(res, expr);
+    | TypedExpression::Case(span, ty, expression, cases) => {
+      collect_expr_constraints(constraints, expression);
 
       for (pattern, expression) in cases {
-        collect_pattern_constraints(res, pattern);
-        collect_expr_constraints(res, expression);
+        collect_pattern_constraints(constraints, pattern);
+        collect_expr_constraints(constraints, expression);
 
-        res.push(Constraint::new(*span, ty, &expression.get_type()));
+        constraints.push(Constraint::new(*span, ty, &expression.get_type()));
       }
     },
-    | TypedExpression::Lambda(span, ty, patterns, expr) => {
+    | TypedExpression::Lambda(span, ty, patterns, expression) => {
       let mut chain = vec![];
 
       for pattern in patterns {
         chain.push(pattern.get_type());
-        collect_pattern_constraints(res, pattern);
+        collect_pattern_constraints(constraints, pattern);
       }
 
-      chain.push(expr.get_type());
-      res.push(Constraint::new(*span, ty, &ast::type_func(chain)));
+      chain.push(expression.get_type());
+      constraints.push(Constraint::new(*span, ty, &ast::type_func(chain)));
 
-      collect_expr_constraints(res, expr);
+      collect_expr_constraints(constraints, expression);
     },
     | TypedExpression::Application(_, ty, a, b) => {
-      res.push(Constraint::new(
+      constraints.push(Constraint::new(
         expr.get_span(),
         &a.get_type(),
         &Type::Function(Box::new(b.get_type()), Box::new(ty.clone())),
       ));
 
-      collect_expr_constraints(res, a);
-      collect_expr_constraints(res, b);
+      collect_expr_constraints(constraints, a);
+      collect_expr_constraints(constraints, b);
     },
-    | TypedExpression::Let(_, _, _, expr) => {
-      collect_expr_constraints(res, expr);
+    | TypedExpression::Let(_, _, _, expression) => {
+      collect_expr_constraints(constraints, expression);
     },
+    | TypedExpression::Ref(_, _, _) | TypedExpression::Const(_, _, _) => { /* Ignored */ },
   }
 }
 
@@ -1342,21 +1360,21 @@ fn unify_constraints(constraints: &[Constraint]) -> Result<Substitution, TypeErr
     return Ok(Substitution::empty());
   }
 
-  let mut sub = Substitution::empty();
-  let mut vec = constraints.to_vec();
+  let mut sbst = Substitution::empty();
+  let mut constraints = constraints.to_vec();
 
-  while !vec.is_empty() {
-    let new_substitution = unify_one(&vec[0])?;
+  while !constraints.is_empty() {
+    let next_sbst = unify_one(&constraints[0])?;
 
-    vec = apply_substitution_set(&new_substitution, &vec[1..]);
-    sub = sub.merge(&new_substitution);
+    constraints = apply_substitution_set(&next_sbst, &constraints[1..]);
+    sbst = sbst.merge(&next_sbst);
   }
 
-  Ok(sub)
+  Ok(sbst)
 }
 
 fn unify_one(constraint: &Constraint) -> Result<Substitution, TypeError> {
-  let res = match constraint.as_pair() {
+  let sbst = match constraint.as_pair() {
     | (Type::Var(a), Type::Var(b)) if b.starts_with("number") && !a.starts_with("number") => {
       unify_var(constraint, a, &constraint.right)?
     },
@@ -1365,28 +1383,31 @@ fn unify_one(constraint: &Constraint) -> Result<Substitution, TypeError> {
     },
     | (Type::Var(a), other) | (other, Type::Var(a)) => unify_var(constraint, a, other)?,
     | (Type::Unit, Type::Unit) => Substitution::empty(),
-    | (Type::Tag(n1, param1), Type::Tag(n2, param2)) if n1 == n2 && param1.len() == param2.len() =>
+    | (Type::Tag(lhs_name, lhs_param), Type::Tag(rhs_name, rhs_param))
+      if lhs_name == rhs_name && lhs_param.len() == rhs_param.len() =>
     {
-      let c = param1
+      let constraints = lhs_param
         .iter()
-        .zip(param2)
-        .map(|(a, b)| Constraint::new(constraint.span, a, b))
+        .zip(rhs_param)
+        .map(|(left, right)| Constraint::new(constraint.span, left, right))
         .collect::<Vec<_>>();
 
-      unify_constraints(&c)?
+      unify_constraints(&constraints)?
     },
-    | (Type::Function(arg1, param1), Type::Function(arg2, param2)) => unify_constraints(&[
-      Constraint::new(constraint.span, arg1.as_ref(), arg2.as_ref()),
-      Constraint::new(constraint.span, param1.as_ref(), param2.as_ref()),
-    ])?,
-    | (Type::Tuple(param1), Type::Tuple(param2)) if param1.len() == param2.len() => {
-      let c = param1
+    | (Type::Function(lhs_param, lhs_rest), Type::Function(rhs_param, rhs_rest)) => {
+      unify_constraints(&[
+        Constraint::new(constraint.span, lhs_param.as_ref(), rhs_param.as_ref()),
+        Constraint::new(constraint.span, lhs_rest.as_ref(), rhs_rest.as_ref()),
+      ])?
+    },
+    | (Type::Tuple(lhs_param), Type::Tuple(rhs_param)) if lhs_param.len() == rhs_param.len() => {
+      let constraints = lhs_param
         .iter()
-        .zip(param2)
-        .map(|(a, b)| Constraint::new(constraint.span, a, b))
+        .zip(rhs_param)
+        .map(|(left, right)| Constraint::new(constraint.span, left, right))
         .collect::<Vec<_>>();
 
-      unify_constraints(&c)?
+      unify_constraints(&constraints)?
     },
     | _ => {
       return Err(TypeError::TypeMatchingError {
@@ -1397,7 +1418,7 @@ fn unify_one(constraint: &Constraint) -> Result<Substitution, TypeError> {
     },
   };
 
-  Ok(res)
+  Ok(sbst)
 }
 
 fn unify_var(constraint: &Constraint, var: &str, ty: &Type) -> Result<Substitution, TypeError> {
@@ -1407,8 +1428,11 @@ fn unify_var(constraint: &Constraint, var: &str, ty: &Type) -> Result<Substituti
 
   if var.starts_with("number") {
     return match ty {
-      | Type::Var(var2) if var == var2 => Ok(Substitution::empty()),
-      | Type::Var(var2) if var2.starts_with("number") => Ok(Substitution::var_pair(var, ty)),
+      | Type::Var(other_var) if var == other_var => Ok(Substitution::empty()),
+      | Type::Var(other_var) if other_var.starts_with("number") => {
+        Ok(Substitution::var_pair(var, ty))
+      },
+      // TODO: Probably extract `Int` and `Float` to somewhere.
       | Type::Tag(name, _) if name == "Int" || name == "Float" => {
         Ok(Substitution::var_pair(var, ty))
       },
@@ -1423,7 +1447,7 @@ fn unify_var(constraint: &Constraint, var: &str, ty: &Type) -> Result<Substituti
   }
 
   match ty {
-    | Type::Var(var2) if var == var2 => Ok(Substitution::empty()),
+    | Type::Var(other_var) if var == other_var => Ok(Substitution::empty()),
     | Type::Var(_) => Ok(Substitution::var_pair(var, ty)),
     | _ if occurs(var, ty) => Err(TypeError::RecursiveTypeDefinition {
       span: constraint.span,
@@ -1437,30 +1461,34 @@ fn unify_var(constraint: &Constraint, var: &str, ty: &Type) -> Result<Substituti
 fn occurs(var: &str, ty: &Type) -> bool {
   match ty {
     | Type::Unit => false,
-    | Type::Var(var2) => var == var2,
-    | Type::Function(a, b) => occurs(var, a) || occurs(var, b),
-    | Type::Tag(_, items) | Type::Tuple(items) => items.iter().any(|i| occurs(var, i)),
+    | Type::Var(other_var) => var == other_var,
+    | Type::Function(other_param, other_rest) => {
+      occurs(var, other_param) || occurs(var, other_rest)
+    },
+    | Type::Tag(_, types) | Type::Tuple(types) => types.iter().any(|it| occurs(var, it)),
   }
 }
 
-fn apply_substitution_set(sub: &Substitution, cons: &[Constraint]) -> Vec<Constraint> {
-  cons
+fn apply_substitution_set(sbst: &Substitution, constraint: &[Constraint]) -> Vec<Constraint> {
+  constraint
     .iter()
-    .map(|c| apply_substitution_constraint(sub, c))
+    .map(|it| apply_substitution_constraint(sbst, it))
     .collect::<Vec<_>>()
 }
 
-fn apply_substitution_constraint(sub: &Substitution, cons: &Constraint) -> Constraint {
+fn apply_substitution_constraint(sbst: &Substitution, constraint: &Constraint) -> Constraint {
   Constraint::new(
-    cons.span,
-    &apply_substitution_ty(sub, &cons.left),
-    &apply_substitution_ty(sub, &cons.right),
+    constraint.span,
+    &apply_substitution_ty(sbst, &constraint.left),
+    &apply_substitution_ty(sbst, &constraint.right),
   )
 }
 
-fn apply_substitution_ty(sub: &Substitution, ty: &Type) -> Type {
-  sub.0.iter().fold(ty.clone(), |result, (var, sol_ty)| {
-    apply_substitution(&result, var, sol_ty)
+fn apply_substitution_ty(sbst: &Substitution, ty: &Type) -> Type {
+  let Substitution(map) = sbst;
+
+  map.iter().fold(ty.clone(), |result, (var, solution)| {
+    apply_substitution(&result, var, solution)
   })
 }
 
@@ -1474,141 +1502,151 @@ fn apply_substitution(ty: &Type, var: &Type, replacement: &Type) -> Type {
         ty.clone()
       }
     },
-    | Type::Tag(name, items) => Type::Tag(
+    | Type::Tag(name, types) => Type::Tag(
       name.clone(),
-      items.map(|i| apply_substitution(i, var, replacement)),
+      types.map(|it| apply_substitution(it, var, replacement)),
     ),
-    | Type::Function(a, b) => Type::Function(
-      Box::new(apply_substitution(a, var, replacement)),
-      Box::new(apply_substitution(b, var, replacement)),
+    | Type::Function(param, rest) => Type::Function(
+      Box::new(apply_substitution(param, var, replacement)),
+      Box::new(apply_substitution(rest, var, replacement)),
     ),
-    | Type::Tuple(items) => Type::Tuple(items.map(|i| apply_substitution(i, var, replacement))),
+    | Type::Tuple(types) => Type::Tuple(types.map(|it| apply_substitution(it, var, replacement))),
   }
 }
 
-fn replace_pattern_types(sub: &Substitution, annotated: TypedPattern) -> TypedPattern {
-  match annotated {
-    | TypedPattern::Var(a, b, c) => TypedPattern::Var(a, sub.replace(b), c),
+fn replace_pattern_types(sbst: &Substitution, pattern: TypedPattern) -> TypedPattern {
+  match pattern {
+    | TypedPattern::Var(a, b, c) => TypedPattern::Var(a, sbst.replace(b), c),
     | TypedPattern::Adt(a, b, c, d) => TypedPattern::Adt(
       a,
-      sub.replace(b),
-      sub.replace(c),
+      sbst.replace(b),
+      sbst.replace(c),
       d.into_iter()
-        .map(|it| replace_pattern_types(sub, it))
+        .map(|it| replace_pattern_types(sbst, it))
         .collect(),
     ),
     | TypedPattern::Wildcard(a) => TypedPattern::Wildcard(a),
     | TypedPattern::Unit(a) => TypedPattern::Unit(a),
     | TypedPattern::Tuple(a, b, c) => TypedPattern::Tuple(
       a,
-      sub.replace(b),
+      sbst.replace(b),
       c.into_iter()
-        .map(|it| replace_pattern_types(sub, it))
+        .map(|it| replace_pattern_types(sbst, it))
         .collect(),
     ),
     | TypedPattern::List(a, b, c) => TypedPattern::List(
       a,
-      sub.replace(b),
+      sbst.replace(b),
       c.into_iter()
-        .map(|it| replace_pattern_types(sub, it))
+        .map(|it| replace_pattern_types(sbst, it))
         .collect(),
     ),
     | TypedPattern::BinaryOperator(a, b, c, d, e) => TypedPattern::BinaryOperator(
       a,
-      sub.replace(b),
+      sbst.replace(b),
       c,
-      Box::new(replace_pattern_types(sub, *d)),
-      Box::new(replace_pattern_types(sub, *e)),
+      Box::new(replace_pattern_types(sbst, *d)),
+      Box::new(replace_pattern_types(sbst, *e)),
     ),
     | TypedPattern::LitInt(a, b) => TypedPattern::LitInt(a, b),
     | TypedPattern::LitString(a, b) => TypedPattern::LitString(a, b),
     | TypedPattern::LitChar(a, b) => TypedPattern::LitChar(a, b),
     | TypedPattern::Alias(a, b, c, d) => TypedPattern::Alias(
       a,
-      sub.replace(b),
-      Box::new(replace_pattern_types(sub, *c)),
+      sbst.replace(b),
+      Box::new(replace_pattern_types(sbst, *c)),
       d,
     ),
   }
 }
 
-fn replace_expr_types(sub: &Substitution, annotated: TypedExpression) -> TypedExpression {
+fn replace_expr_types(sbst: &Substitution, annotated: TypedExpression) -> TypedExpression {
   match annotated {
-    | TypedExpression::Const(span, ty, a) => TypedExpression::Const(span, sub.replace(ty), a),
-    | TypedExpression::Tuple(span, ty, a) => TypedExpression::Tuple(
+    | TypedExpression::Const(span, ty, value) => {
+      TypedExpression::Const(span, sbst.replace(ty), value)
+    },
+    | TypedExpression::Tuple(span, ty, expressions) => TypedExpression::Tuple(
       span,
-      sub.replace(ty),
-      a.into_iter().map(|a| replace_expr_types(sub, a)).collect(),
+      sbst.replace(ty),
+      expressions
+        .into_iter()
+        .map(|it| replace_expr_types(sbst, it))
+        .collect(),
     ),
-    | TypedExpression::List(span, ty, a) => TypedExpression::List(
+    | TypedExpression::List(span, ty, expressions) => TypedExpression::List(
       span,
-      sub.replace(ty),
-      a.into_iter().map(|a| replace_expr_types(sub, a)).collect(),
+      sbst.replace(ty),
+      expressions
+        .into_iter()
+        .map(|it| replace_expr_types(sbst, it))
+        .collect(),
     ),
-    | TypedExpression::Ref(span, ty, a) => TypedExpression::Ref(span, sub.replace(ty), a),
-    | TypedExpression::If(span, ty, a, b, c) => TypedExpression::If(
+    | TypedExpression::Ref(span, ty, a) => TypedExpression::Ref(span, sbst.replace(ty), a),
+    | TypedExpression::If(span, ty, cond, then_, else_) => TypedExpression::If(
       span,
-      sub.replace(ty),
-      Box::new(replace_expr_types(sub, *a)),
-      Box::new(replace_expr_types(sub, *b)),
-      Box::new(replace_expr_types(sub, *c)),
+      sbst.replace(ty),
+      Box::new(replace_expr_types(sbst, *cond)),
+      Box::new(replace_expr_types(sbst, *then_)),
+      Box::new(replace_expr_types(sbst, *else_)),
     ),
-    | TypedExpression::Case(span, ty, expr, branches) => TypedExpression::Case(
+    | TypedExpression::Case(span, ty, expression, branches) => TypedExpression::Case(
       span,
-      sub.replace(ty),
-      Box::new(replace_expr_types(sub, *expr)),
+      sbst.replace(ty),
+      Box::new(replace_expr_types(sbst, *expression)),
       branches
         .into_iter()
-        .map(|(branch_pattern, branch_expr)| (branch_pattern, replace_expr_types(sub, branch_expr)))
+        .map(|(branch_pattern, branch_expr)| {
+          (branch_pattern, replace_expr_types(sbst, branch_expr))
+        })
         .collect::<Vec<_>>(),
     ),
     | TypedExpression::Lambda(span, ty, a, b) => TypedExpression::Lambda(
       span,
-      sub.replace(ty),
+      sbst.replace(ty),
       a,
-      Box::new(replace_expr_types(sub, *b)),
+      Box::new(replace_expr_types(sbst, *b)),
     ),
     | TypedExpression::Application(span, ty, a, b) => TypedExpression::Application(
       span,
-      sub.replace(ty),
-      Box::new(replace_expr_types(sub, *a)),
-      Box::new(replace_expr_types(sub, *b)),
+      sbst.replace(ty),
+      Box::new(replace_expr_types(sbst, *a)),
+      Box::new(replace_expr_types(sbst, *b)),
     ),
     | TypedExpression::Let(span, ty, let_defs, let_expr) => TypedExpression::Let(
       span,
-      sub.replace(ty),
+      sbst.replace(ty),
       let_defs,
-      Box::new(replace_expr_types(sub, *let_expr)),
+      Box::new(replace_expr_types(sbst, *let_expr)),
     ),
   }
 }
 
-fn add_pattern_vars_to_env(env: &mut Context, pat: &TypedPattern) {
+fn add_pattern_vars_to_env(context: &mut Context, pat: &TypedPattern) {
   match pat {
     | TypedPattern::Var(_, ty, name) => {
-      env.set(name, ty.clone());
+      context.set(name, ty.clone());
     },
-    | TypedPattern::Adt(_, _, _, items) => {
-      items.for_each(|it| add_pattern_vars_to_env(env, it));
+    | TypedPattern::Adt(_, _, _, patterns) => {
+      patterns.for_each(|it| add_pattern_vars_to_env(context, it));
     },
     | TypedPattern::Wildcard(_) => {},
     | TypedPattern::Unit(_) => {},
-    | TypedPattern::Tuple(_, _, items) => {
-      items.for_each(|it| add_pattern_vars_to_env(env, it));
+    | TypedPattern::Tuple(_, _, patterns) => {
+      patterns.for_each(|it| add_pattern_vars_to_env(context, it));
     },
-    | TypedPattern::List(_, _, items) => {
-      items.for_each(|it| add_pattern_vars_to_env(env, it));
+    | TypedPattern::List(_, _, patterns) => {
+      patterns.for_each(|it| add_pattern_vars_to_env(context, it));
     },
-    | TypedPattern::BinaryOperator(_, _, _, a, b) => {
-      add_pattern_vars_to_env(env, a);
-      add_pattern_vars_to_env(env, b);
+    | TypedPattern::BinaryOperator(_, _, _, lhs_pattern, rhs_pattern) => {
+      add_pattern_vars_to_env(context, lhs_pattern);
+      add_pattern_vars_to_env(context, rhs_pattern);
     },
     | TypedPattern::LitInt(_, _) => {},
     | TypedPattern::LitString(_, _) => {},
     | TypedPattern::LitChar(_, _) => {},
-    | TypedPattern::Alias(_, ty, pat, name) => {
-      add_pattern_vars_to_env(env, pat.as_ref());
-      env.set(name, ty.clone());
+    | TypedPattern::Alias(_, ty, pattern, name) => {
+      add_pattern_vars_to_env(context, pattern.as_ref());
+      context.set(name, ty.clone());
     },
   }
 }

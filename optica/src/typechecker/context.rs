@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::untyped::{Type, TypeAlias};
+use crate::ast::untyped::*;
 use super::generator::Generator;
 
 #[derive(Debug, Clone)]

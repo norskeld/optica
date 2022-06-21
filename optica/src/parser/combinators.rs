@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::ast::Int;
-use crate::errors::ParseError;
+use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 

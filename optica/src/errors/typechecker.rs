@@ -1,5 +1,5 @@
-use crate::ast::untyped::{Expression, Pattern, Type};
-use crate::ast::typed::TypedExpression;
+use crate::ast::untyped::*;
+use crate::ast::typed::*;
 use crate::source::Span;
 
 #[derive(PartialEq, Debug, Clone)]

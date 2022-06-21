@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::ast;
-use crate::ast::typed::{Adt, AdtVariant, ExternalFunction, Function, Value};
-use crate::errors::{InterpreterError, Wrappable};
+use crate::ast::typed::*;
+use crate::errors::*;
 
 pub fn adt_constructor(adt: Arc<Adt>, variant: &AdtVariant) -> Value {
   let mut func_types = vec![ast::type_tag_args(&variant.name, vec![])];

@@ -5,9 +5,9 @@ use std::sync::Arc;
 use crate::ast;
 use crate::ast::typed::*;
 use crate::ast::untyped::*;
-use crate::errors::{InterpreterError, LangError, Wrappable};
+use crate::errors::*;
 use crate::intrinsics;
-use crate::loader::{AnalyzedModule, RuntimeModule};
+use crate::loader::*;
 use super::Stack;
 
 #[derive(Clone, Debug)]
@@ -54,8 +54,11 @@ impl Interpreter {
       .unwrap()
   }
 
-  pub fn eval_expression(&mut self, expr: &TypedExpression) -> Result<Value, LangError> {
-    match expr {
+  pub fn eval_expression(
+    &mut self,
+    typed_expression: &TypedExpression,
+  ) -> Result<Value, LangError> {
+    match typed_expression {
       | TypedExpression::Ref(_, _, name) => {
         let stack_value = self.stack.find(name);
 
@@ -156,8 +159,11 @@ impl Interpreter {
     }
   }
 
-  pub fn eval_declaration(&mut self, decl: &Declaration) -> Result<Option<Value>, LangError> {
-    if let Declaration::Definition(_, definition) = decl {
+  pub fn eval_declaration(
+    &mut self,
+    typed_statement: &TypedStatement,
+  ) -> Result<Option<Value>, LangError> {
+    if let TypedStatement::Definition(_, definition) = typed_statement {
       let (name, value) = self.eval_definition(definition);
       let value = self.eval_constant(value)?;
 
@@ -169,9 +175,9 @@ impl Interpreter {
     }
   }
 
-  fn eval_definition(&mut self, def: &TypedDefinition) -> (String, Value) {
-    let name = def.name.clone();
-    let value = Self::create_function_closure(&mut self.stack, def);
+  fn eval_definition(&mut self, typed_definition: &TypedDefinition) -> (String, Value) {
+    let name = typed_definition.name.clone();
+    let value = Self::create_function_closure(&mut self.stack, typed_definition);
 
     self.stack.add(&name, value.clone());
 
@@ -212,7 +218,7 @@ impl Interpreter {
   pub fn eval_module(
     &mut self,
     modules: &HashMap<String, RuntimeModule>,
-    module: &AnalyzedModule,
+    module: &TypedModule,
   ) -> Result<RuntimeModule, LangError> {
     let mut definitions = HashMap::new();
 
@@ -228,13 +234,13 @@ impl Interpreter {
       self.stack.add(&import.destination_name, value.clone());
     }
 
-    for decl in &module.declarations {
-      match decl {
-        | Declaration::Definition(_, def) => {
+    for declaration in &module.declarations {
+      match declaration {
+        | TypedStatement::Definition(_, def) => {
           let (name, value) = self.eval_definition(def);
           definitions.insert(name, value);
         },
-        | Declaration::Adt(_, adt) => {
+        | TypedStatement::Adt(_, adt) => {
           for variant in &adt.variants {
             let (name, value) = self.eval_adt_variant(adt.clone(), variant);
             definitions.insert(name, value);
@@ -308,14 +314,19 @@ impl Interpreter {
     }
   }
 
-  fn exec_function(&mut self, func: &Function, args: Vec<Value>) -> Result<Value, LangError> {
+  fn exec_function(
+    &mut self,
+    function: &Function,
+    arguments: Vec<Value>,
+  ) -> Result<Value, LangError> {
     self.stack.enter_block();
 
-    let result = match func {
+    let result = match function {
       | Function::External { function, .. } => {
         // TODO: This probably should not map to `InterpreterError::BuiltinFunctionError` and just
         // propagate produced error.
-        (function.function)(self, &args).map_err(|_| InterpreterError::BuiltinFunctionError.wrap())
+        (function.function)(self, &arguments)
+          .map_err(|_| InterpreterError::BuiltinFunctionError.wrap())
       },
       | Function::Definition {
         patterns,
@@ -323,14 +334,14 @@ impl Interpreter {
         captures,
         ..
       } => {
-        assert_eq!(patterns.len(), args.len());
+        assert_eq!(patterns.len(), arguments.len());
 
         for (name, value) in captures {
           let value = self.eval_constant(value.clone())?;
           self.stack.add(name, value)
         }
 
-        for (pattern, value) in patterns.iter().zip(args) {
+        for (pattern, value) in patterns.iter().zip(arguments) {
           add_pattern_values(self, pattern, value).unwrap();
         }
 
@@ -346,57 +357,64 @@ impl Interpreter {
   pub fn create_lambda_closure(
     stack: &mut Stack,
     ty: &Type,
-    patterns: &[TypedPattern],
-    expr: &TypedExpression,
+    typed_patterns: &[TypedPattern],
+    typed_expression: &TypedExpression,
   ) -> Value {
     let function = Arc::new(Function::Definition {
       id: ast::function_id(),
-      patterns: patterns.to_owned(),
-      expression: expr.clone(),
-      captures: Self::extract_captures(stack, expr),
+      patterns: typed_patterns.to_owned(),
+      expression: typed_expression.clone(),
+      captures: Self::extract_captures(stack, typed_expression),
       function_type: ty.clone(),
     });
 
     Value::Function {
-      arity: patterns.len() as u32,
+      arity: typed_patterns.len() as u32,
       args: vec![],
       function,
     }
   }
 
-  pub fn create_function_closure(stack: &mut Stack, def: &TypedDefinition) -> Value {
+  pub fn create_function_closure(stack: &mut Stack, typed_definition: &TypedDefinition) -> Value {
     let function = Arc::new(Function::Definition {
       id: ast::function_id(),
-      patterns: def.patterns.clone(),
-      expression: def.expression.clone(),
-      captures: Self::extract_captures(stack, &def.expression),
-      function_type: def.header.clone(),
+      patterns: typed_definition.patterns.clone(),
+      expression: typed_definition.expression.clone(),
+      captures: Self::extract_captures(stack, &typed_definition.expression),
+      function_type: typed_definition.header.clone(),
     });
 
     Value::Function {
-      arity: def.patterns.len() as u32,
+      arity: typed_definition.patterns.len() as u32,
       args: vec![],
       function,
     }
   }
 
-  pub fn extract_captures(stack: &mut Stack, expr: &TypedExpression) -> HashMap<String, Value> {
+  pub fn extract_captures(
+    stack: &mut Stack,
+    typed_expression: &TypedExpression,
+  ) -> HashMap<String, Value> {
     let mut map = HashMap::new();
-    Self::traverse_expr(&mut map, stack, expr);
+    Self::traverse_expr(&mut map, stack, typed_expression);
 
     map
   }
 
-  fn traverse_expr(result: &mut HashMap<String, Value>, stack: &mut Stack, expr: &TypedExpression) {
+  fn traverse_expr(
+    result: &mut HashMap<String, Value>,
+    stack: &mut Stack,
+    typed_expression: &TypedExpression,
+  ) {
     // TODO: Avoid capturing internal definitions.
-    match expr {
+    match typed_expression {
       | TypedExpression::Ref(_, _, name) => {
         if let Some(value) = stack.find(name) {
           result.insert(name.to_string(), value);
         }
       },
-      | TypedExpression::Tuple(_, _, list) | TypedExpression::List(_, _, list) => {
-        for expression in list {
+      | TypedExpression::Tuple(_, _, expressions) | TypedExpression::List(_, _, expressions) => {
+        for expression in expressions {
           Self::traverse_expr(result, stack, expression);
         }
       },
@@ -419,10 +437,10 @@ impl Interpreter {
 
 pub fn add_pattern_values(
   interpreter: &mut Interpreter,
-  pattern: &TypedPattern,
+  typed_pattern: &TypedPattern,
   value: Value,
 ) -> Result<(), InterpreterError> {
-  match pattern {
+  match typed_pattern {
     | TypedPattern::Var(_, _, name) => {
       interpreter.stack.add(name, value);
     },
@@ -486,8 +504,8 @@ pub fn add_pattern_values(
   Ok(())
 }
 
-fn matches_pattern(pattern: &TypedPattern, value: &Value) -> bool {
-  match pattern {
+fn matches_pattern(typed_pattern: &TypedPattern, value: &Value) -> bool {
+  match typed_pattern {
     | TypedPattern::Var(_, _, _) => true,
     | TypedPattern::Wildcard(_) => true,
     | TypedPattern::Alias(_, _, pattern, _) => matches_pattern(pattern, value),

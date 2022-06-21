@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::errors::LangError;
 use crate::runtime::Interpreter;
 use crate::source::Span;
-use super::untyped::{Literal, Type, TypeAlias};
+use super::untyped::*;
 use super::{Float, Int};
 
 /// Unique id for fast comparison between functions.
@@ -16,7 +16,7 @@ pub type FunctionId = usize;
 pub type BuiltinFunction = fn(&mut Interpreter, &[Value]) -> Result<Value, LangError>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Declaration {
+pub enum TypedStatement {
   Alias(TypeAlias),
   Adt(String, Arc<Adt>),
   Definition(String, TypedDefinition),

@@ -1,6 +1,6 @@
 use crate::ast;
-use crate::ast::untyped::{Expression, Literal};
-use crate::errors::ParseError;
+use crate::ast::untyped::*;
+use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
@@ -64,7 +64,7 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
           (
             Expression::QualifiedRef(
               (input.pos(), input.pos()),
-              utils::vec::create_vec(first, rest),
+              utils::vec::cons(first, rest),
               name,
             ),
             input,
@@ -128,10 +128,7 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
               let input = combinators::expect(Token::RightParen, input)?;
 
               (
-                Expression::Tuple(
-                  (input.pos(), input.pos()),
-                  utils::vec::create_vec(value, rest),
-                ),
+                Expression::Tuple((input.pos(), input.pos()), utils::vec::cons(value, rest)),
                 input,
               )
             },

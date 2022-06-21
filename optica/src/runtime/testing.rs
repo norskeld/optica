@@ -1,5 +1,5 @@
-use crate::ast::untyped::Expression;
-use crate::ast::typed::TypedExpression;
+use crate::ast::typed::*;
+use crate::ast::untyped::*;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::source::SourceCode;
@@ -11,7 +11,7 @@ pub fn typed_expression(code: &str) -> TypedExpression {
   let expression = expression(code);
   let mut tc = Typechecker::new(source);
 
-  match tc.analyze_expression(&expression) {
+  match tc.typecheck_expression(&expression) {
     | Ok(result) => result,
     | Err(error) => {
       println!("Error: {error:?}");

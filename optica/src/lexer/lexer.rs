@@ -2,7 +2,7 @@ use nom::Err as NomError;
 use nom::error::Error as NomWrappedError;
 use nom::character;
 
-use crate::errors::{LangError, LexicalError};
+use crate::errors::*;
 use crate::source::{SourceCode, Span};
 use super::{SpannedToken, Token};
 use super::parser;

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::ast::typed::{Declaration, Function, TypedExpression, TypedPattern, Value};
+use crate::ast::typed::*;
 use super::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,7 +33,7 @@ pub enum InterpreterError {
   ImpossibleConversion,
   MissingSourceFile,
   CyclicModuleDependency(Vec<Vec<String>>),
-  MissingExposing(String, Vec<Declaration>),
+  MissingExposing(String, Vec<TypedStatement>),
   FunctionTodo(String),
   InternalError,
 }

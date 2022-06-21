@@ -1,4 +1,4 @@
-use super::untyped::Type;
+use super::untyped::*;
 
 pub fn traverse_type<S, F>(state: &mut S, root: &Type, traverser: &F)
 where
@@ -14,9 +14,9 @@ where
         .iter()
         .for_each(|param| traverse_type(state, param, traverser));
     },
-    | Type::Function(a, b) => {
-      traverse_type(state, a, traverser);
-      traverse_type(state, b, traverser);
+    | Type::Function(param, rest) => {
+      traverse_type(state, param, traverser);
+      traverse_type(state, rest, traverser);
     },
     | Type::Tuple(params) => {
       params

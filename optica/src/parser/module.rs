@@ -1,7 +1,5 @@
-use crate::ast::untyped::{
-  AdtExports, Module, ModuleExport, ModuleExports, ModuleHeader, ModuleImport,
-};
-use crate::errors::ParseError;
+use crate::ast::untyped::*;
+use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
@@ -135,7 +133,7 @@ fn parse_import(input: Input) -> Result<(ModuleImport, Input), ParseError> {
   let (first, input) = combinators::expect_upper_ident(input)?;
   let (rest, input) = combinators::many0(&parse_dot_name, input)?;
 
-  let path = utils::vec::create_vec(first, rest);
+  let path = utils::vec::cons(first, rest);
 
   let (alias, input) = match input.read() {
     | Token::AsKw => {

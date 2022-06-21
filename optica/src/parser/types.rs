@@ -1,5 +1,5 @@
-use crate::ast::untyped::Type;
-use crate::errors::ParseError;
+use crate::ast::untyped::*;
+use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
@@ -38,7 +38,7 @@ fn parse_type_base(input: Input, with_adt: bool) -> Result<(Type, Input), ParseE
             input = rest;
           }
 
-          let mut names = utils::vec::create_vec(name, acc);
+          let mut names = utils::vec::cons(name, acc);
           let names = names.pop().map(|last| (names, last));
 
           match names {
@@ -79,7 +79,7 @@ fn parse_type_base(input: Input, with_adt: bool) -> Result<(Type, Input), ParseE
               let (rest, input) = combinators::comma0(&parse_type, input)?;
               let input = combinators::expect(Token::RightParen, input)?;
 
-              (Type::Tuple(utils::vec::create_vec(first, rest)), input)
+              (Type::Tuple(utils::vec::cons(first, rest)), input)
             },
           }
         },
@@ -109,7 +109,7 @@ fn create_function(ty: Type, types: Vec<Type>) -> Type {
     return ty;
   }
 
-  let types = utils::vec::create_vec(ty, types);
+  let types = utils::vec::cons(ty, types);
   let mut types_reversed = types.into_iter().rev();
 
   types_reversed

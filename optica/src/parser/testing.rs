@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 
-use crate::errors::{LangError, ParseError};
+use crate::errors::*;
 use crate::source::{Input, SourceCode};
 use crate::lexer::Lexer;
 use super::combinators;

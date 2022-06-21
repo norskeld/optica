@@ -1,5 +1,5 @@
-use crate::ast::untyped::{Definition, InfixDirection, Statement, Type};
-use crate::errors::ParseError;
+use crate::ast::untyped::*;
+use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::{Input, Span};
 use super::combinators;

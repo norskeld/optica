@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use crate::ast;
-use crate::ast::typed::Value;
-use crate::errors::{LangError, LoaderError, Wrappable};
+use crate::ast::typed::*;
+use crate::errors::*;
 use crate::lexer::Lexer;
-use crate::loader::{AnalyzedModule, LoadedModule, ModuleLoader, RuntimeModule};
+use crate::loader::*;
 use crate::parser::Parser;
 use crate::source::{SourceCode, SourceFile};
 use crate::typechecker::Typechecker;
@@ -15,7 +15,7 @@ pub struct Runtime {
   pub interpreter: Interpreter,
   pub typechecker: Typechecker,
   pub loaded_modules: HashMap<String, LoadedModule>,
-  pub analyzed_modules: HashMap<String, AnalyzedModule>,
+  pub analyzed_modules: HashMap<String, TypedModule>,
   pub runtime_modules: HashMap<String, RuntimeModule>,
 }
 
@@ -40,7 +40,7 @@ impl Runtime {
     let lexer = Lexer::new(&code);
     let mut parser = Parser::new(lexer);
     let expr = parser.parse_expression()?;
-    let typed_expr = self.typechecker.with(code).analyze_expression(&expr)?;
+    let typed_expr = self.typechecker.with(code).typecheck_expression(&expr)?;
     let value = self.interpreter.eval_expression(&typed_expr)?;
 
     Ok(value)
@@ -57,12 +57,15 @@ impl Runtime {
     let lexer = Lexer::new(&code);
     let mut parser = Parser::new(lexer);
     let statement = parser.parse_statement()?;
-    let declarations = self.typechecker.with(code).analyze_statement(&statement)?;
+    let declarations = self
+      .typechecker
+      .with(code)
+      .typecheck_statement(&statement)?;
 
-    let mut opt_value = None;
+    let mut value = None;
 
     for decl in &declarations {
-      opt_value = self.interpreter.eval_declaration(decl)?;
+      value = self.interpreter.eval_declaration(decl)?;
 
       if let Some(ty) = ast::declaration_type(decl) {
         self
@@ -71,7 +74,7 @@ impl Runtime {
       }
     }
 
-    Ok(opt_value)
+    Ok(value)
   }
 
   /// Evaluates a module.
@@ -184,7 +187,7 @@ impl Runtime {
 
     // Typecheck module.
     let mut typechecker = Typechecker::new(module.src.source.clone());
-    let analyzed_module = typechecker.analyze_module(&self.analyzed_modules, module)?;
+    let analyzed_module = typechecker.typecheck_module(&self.analyzed_modules, module)?;
 
     self
       .analyzed_modules

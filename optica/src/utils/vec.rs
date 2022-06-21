@@ -28,15 +28,15 @@ impl<A: Clone> VecExt<A> for Vec<A> {
   }
 }
 
-pub fn create_vec<T>(first: T, rest: Vec<T>) -> Vec<T> {
+pub fn cons<T>(first: T, rest: Vec<T>) -> Vec<T> {
   let mut vec: Vec<T> = vec![first];
   vec.extend(rest);
 
   vec
 }
 
-pub fn create_vec_inv<T: Clone>(start: &[T], last: T) -> Vec<T> {
-  let mut vec: Vec<T> = start.to_vec();
+pub fn rcons<T: Clone>(init: &[T], last: T) -> Vec<T> {
+  let mut vec: Vec<T> = init.to_vec();
   vec.push(last);
 
   vec

@@ -1,4 +1,4 @@
-use crate::ast::untyped::Expression;
+use crate::ast::untyped::*;
 use self::ExpressionTreeError::*;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -50,10 +50,10 @@ pub fn to_expression(tree: ExpressionTree) -> Expression {
 }
 
 pub fn create_expression_tree(
-  exprs: &[Expression],
-  ops: &[String],
+  expressions: &[Expression],
+  operators: &[String],
 ) -> Result<ExpressionTree, ExpressionTreeError> {
-  let tokens = create_token_stream(exprs, ops)?;
+  let tokens = create_token_stream(expressions, operators)?;
   let (rest, tree) = create_tree(&tokens, 0)?;
 
   assert_eq!(rest.len(), 0);
