@@ -120,10 +120,7 @@ impl Interpreter {
         Err(
           InterpreterError::CaseExpressionNonExhaustive(
             cond_val,
-            branches
-              .into_iter()
-              .map(|(p, _)| p.clone())
-              .collect::<Vec<_>>(),
+            branches.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>(),
           )
           .wrap(),
         )

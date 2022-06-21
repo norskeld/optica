@@ -8,7 +8,7 @@ pub fn repl() {
 
   loop {
     // Read
-    let line = read_terminal_line().unwrap_or(String::from(""));
+    let line = read_terminal_line().unwrap_or_else(|_| String::default());
 
     if line.is_empty() {
       continue;

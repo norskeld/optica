@@ -59,11 +59,11 @@ impl Substitution {
     let Substitution(that) = sbst;
 
     this.into_iter().for_each(|(key, value)| {
-      map.extend([(key, apply_substitution_ty(&sbst, &value))].into_iter())
+      map.extend([(key, apply_substitution_ty(sbst, &value))].into_iter())
     });
 
     that
-      .into_iter()
+      .iter()
       .for_each(|(key, value)| map.extend([(key.to_owned(), value.to_owned())].into_iter()));
 
     Substitution(map)
