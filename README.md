@@ -27,7 +27,7 @@ Core language stuff:
 
 Other goodies I would like to implement as well, mostly related to pattern matching capabilities:
 
-- [ ] Override-like pattern matching.
+- [ ] Overload-like pattern matching.
 - [ ] Function guards.
 - [ ] `where` clauses.
 - [ ] As-patterns.
