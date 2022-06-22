@@ -1,5 +1,7 @@
 # Optica
 
+[![Checks](https://img.shields.io/github/workflow/status/norskeld/optica/check?style=flat-square&colorA=22272d&colorB=22272d&label=fmt%20%2B%20clippy)](https://github.com/norskeld/optica/actions)
+
 Minimal, interpreted, statically typed functional programming language.
 
 ## Status & Purpose
