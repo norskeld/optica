@@ -1,6 +1,7 @@
 # Optica
 
-[![Checks](https://img.shields.io/github/workflow/status/norskeld/optica/check?style=flat-square&colorA=22272d&colorB=22272d&label=fmt%20%2B%20clippy)](https://github.com/norskeld/optica/actions)
+[![Checks](https://img.shields.io/github/workflow/status/norskeld/optica/check?style=flat-square&colorA=22272d&colorB=22272d&label=fmt%20%2B%20clippy)](https://github.com/norskeld/optica/actions/workflows/check.yml)
+[![Tests](https://img.shields.io/github/workflow/status/norskeld/optica/test?style=flat-square&colorA=22272d&colorB=22272d&label=tests)](https://github.com/norskeld/optica/actions/workflows/test.yml)
 
 Minimal, interpreted, statically typed functional programming language.
 
@@ -14,14 +15,15 @@ I have no real aspirations for the language as this is primarily a personal hobb
 
 Core language stuff:
 
-- [ ] Haskell/Elm-like syntax.
-- [ ] Hindley–Milner type inference.
-- [ ] Type aliases and ADTs.
+- [x] Haskell/Elm-like syntax.
+- [x] Hindley–Milner type inference.
+- [x] Type aliases and ADTs.
 - [ ] Records (using [this paper by Daan Leijen][records-paper] as a reference).
-- [ ] Pattern matching.
-- [ ] Module system.
+- [x] Pattern matching.
+- [x] Module system.
 - [ ] Standard library (Prelude).
 - [ ] Diagnostic reporting via [codespan] or [ariadne].
+- [x] Basic stack-based interpreter.
 
 Other goodies I would like to implement as well, mostly related to pattern matching capabilities:
 

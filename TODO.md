@@ -4,7 +4,6 @@
 - Prefer iterators over `for` loops where possible.
 - Get rid of unnecessary derives.
 - Get rid of `unwrap`s.
-- Make `Bool` internal type and value?
-- Add more tests.
-- Set up CI.
+- Make `Bool` internal type and value, like `Int` and `Float`?
+- Add more tests and set up coverage reports.
 - Probably use `Range` for spans.
