@@ -613,6 +613,8 @@ impl Default for Interpreter {
 
 #[cfg(test)]
 mod tests {
+  use indoc::indoc;
+
   use super::super::testing;
   use super::*;
 
@@ -684,6 +686,52 @@ mod tests {
         Value::String("Life".to_string()),
         Value::List(vec![Value::Number(40), Value::Number(2)])
       ]))
+    );
+  }
+
+  #[test]
+  fn test_let() {
+    let expression = testing::typed_expression("let life = 42 in life");
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::Number(42))
+    );
+  }
+
+  #[test]
+  fn test_let_multiple() {
+    let expression = testing::typed_expression(indoc! {"
+      let
+        life = 42
+        blaze = 420
+       in
+        (life, blaze)
+    "});
+
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::Tuple(vec![Value::Number(42), Value::Number(420)]))
+    );
+  }
+
+  #[test]
+  fn test_let_nested() {
+    let expression = testing::typed_expression(indoc! {"
+      let life =
+        let life' = 42 in life'
+       in
+        life
+    "});
+
+    let mut interpreter = Interpreter::new();
+
+    assert_eq!(
+      interpreter.eval_expression(&expression),
+      Ok(Value::Number(42))
     );
   }
 }
