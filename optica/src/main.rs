@@ -1,6 +1,6 @@
 use clap::Parser;
-use optica::errors::LangError;
 use optica::cli;
+use optica::errors::LangError;
 
 #[derive(Parser, Debug)]
 #[clap(version, about, long_about = None)]

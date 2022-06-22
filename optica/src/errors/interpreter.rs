@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use crate::ast::typed::*;
 use super::*;
+use crate::ast::typed::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InterpreterError {

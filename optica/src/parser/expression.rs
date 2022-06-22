@@ -1,11 +1,11 @@
+use super::combinators;
+use super::pattern;
+use super::statement;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
-use super::combinators;
-use super::pattern;
-use super::statement;
 
 pub fn parse_expr(input: Input) -> Result<(Expression, Input), ParseError> {
   let (first, input) = parse_expr_application(input)?;
@@ -31,22 +31,30 @@ fn parse_expr_application(input: Input) -> Result<(Expression, Input), ParseErro
 
 fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
   let (expr, input) = match input.read() {
-    | Token::LitInt(value) => (
-      Expression::Literal(input.span(), Literal::Int(value)),
-      input.next(),
-    ),
-    | Token::LitFloat(value) => (
-      Expression::Literal(input.span(), Literal::Float(value)),
-      input.next(),
-    ),
-    | Token::LitChar(value) => (
-      Expression::Literal(input.span(), Literal::Char(value)),
-      input.next(),
-    ),
-    | Token::LitString(value) => (
-      Expression::Literal(input.span(), Literal::String(value)),
-      input.next(),
-    ),
+    | Token::LitInt(value) => {
+      (
+        Expression::Literal(input.span(), Literal::Int(value)),
+        input.next(),
+      )
+    },
+    | Token::LitFloat(value) => {
+      (
+        Expression::Literal(input.span(), Literal::Float(value)),
+        input.next(),
+      )
+    },
+    | Token::LitChar(value) => {
+      (
+        Expression::Literal(input.span(), Literal::Char(value)),
+        input.next(),
+      )
+    },
+    | Token::LitString(value) => {
+      (
+        Expression::Literal(input.span(), Literal::String(value)),
+        input.next(),
+      )
+    },
     | Token::Ident(name) => (Expression::Ref(input.span(), name), input.next()),
     | Token::UpperIdent(first) => {
       let next_input = input.next();
@@ -70,10 +78,12 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
             input,
           )
         },
-        | _ => (
-          Expression::Ref((input.pos(), next_input.pos()), first),
-          input.next(),
-        ),
+        | _ => {
+          (
+            Expression::Ref((input.pos(), next_input.pos()), first),
+            input.next(),
+          )
+        },
       }
     },
     | Token::IfKw => {
@@ -292,9 +302,9 @@ fn create_binary_operator_chain(first: Expression, rest: Vec<(String, Expression
 mod tests {
   use indoc::indoc;
 
-  use crate::ast::untyped::Pattern;
   use super::super::testing;
   use super::*;
+  use crate::ast::untyped::Pattern;
 
   #[test]
   fn test_exprs() {

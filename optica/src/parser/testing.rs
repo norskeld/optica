@@ -2,10 +2,10 @@
 
 use std::fmt::Debug;
 
-use crate::errors::*;
-use crate::source::{Input, SourceCode};
-use crate::lexer::Lexer;
 use super::combinators;
+use crate::errors::*;
+use crate::lexer::Lexer;
+use crate::source::{Input, SourceCode};
 
 fn create_input(c: &str) -> Input {
   let code = SourceCode::from_str(c);

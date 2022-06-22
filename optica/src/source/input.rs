@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use crate::source::{SourceCode, Span};
 use crate::lexer::{SpannedToken, Token};
+use crate::source::{SourceCode, Span};
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Input {

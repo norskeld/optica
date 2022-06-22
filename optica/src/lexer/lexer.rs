@@ -1,11 +1,11 @@
-use nom::Err as NomError;
-use nom::error::Error as NomWrappedError;
 use nom::character;
+use nom::error::Error as NomWrappedError;
+use nom::Err as NomError;
 
+use super::parser;
+use super::{SpannedToken, Token};
 use crate::errors::*;
 use crate::source::{SourceCode, Span};
-use super::{SpannedToken, Token};
-use super::parser;
 
 pub struct Lexer {
   code: SourceCode,
@@ -106,12 +106,14 @@ impl Lexer {
       },
       | Err(e) => {
         let result = match e {
-          | NomError::Incomplete(_) => Err(LangError::Lexer(
-            self.code.clone(),
-            LexicalError::ReachedEnd {
-              pos: self.pos as u32,
-            },
-          )),
+          | NomError::Incomplete(_) => {
+            Err(LangError::Lexer(
+              self.code.clone(),
+              LexicalError::ReachedEnd {
+                pos: self.pos as u32,
+              },
+            ))
+          },
           | NomError::Error(NomWrappedError { input, .. })
           | NomError::Failure(NomWrappedError { input, .. }) => {
             let new_pos = self.code.as_str().len() - input.len();
@@ -228,10 +230,10 @@ impl Lexer {
 mod tests {
   use indoc::indoc;
 
-  use crate::source::SourceCode;
-  use crate::utils::vec::VecExt;
   use super::Lexer;
   use super::{SpannedToken, Token};
+  use crate::source::SourceCode;
+  use crate::utils::vec::VecExt;
 
   fn tokens(code: &str) -> Vec<Token> {
     match Lexer::new(&SourceCode::from_str(code)).lex() {

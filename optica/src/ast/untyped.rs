@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 
-use crate::source::Span;
 use super::{Float, Int};
+use crate::source::Span;
 
 /// Unevaluated expression tree.
 #[derive(Debug, Clone)]
@@ -27,14 +27,14 @@ impl Expression {
       | Expression::Literal(span, _) => span,
       | Expression::Tuple(span, _) => span,
       | Expression::List(span, _) => span,
-      | Expression::If(span, _, _, _) => span,
-      | Expression::Lambda(span, _, _) => span,
-      | Expression::Application(span, _, _) => span,
-      | Expression::OperatorChain(span, _, _) => span,
+      | Expression::If(span, ..) => span,
+      | Expression::Lambda(span, ..) => span,
+      | Expression::Application(span, ..) => span,
+      | Expression::OperatorChain(span, ..) => span,
       | Expression::Ref(span, _) => span,
-      | Expression::QualifiedRef(span, _, _) => span,
-      | Expression::Let(span, _, _) => span,
-      | Expression::Match(span, _, _) => span,
+      | Expression::QualifiedRef(span, ..) => span,
+      | Expression::Let(span, ..) => span,
+      | Expression::Match(span, ..) => span,
     }
   }
 }
@@ -190,9 +190,9 @@ impl Pattern {
   pub fn span(&self) -> Span {
     *match self {
       | Pattern::Var(span, _) => span,
-      | Pattern::Adt(span, _, _) => span,
-      | Pattern::BinaryOperator(span, _, _, _) => span,
-      | Pattern::Alias(span, _, _) => span,
+      | Pattern::Adt(span, ..) => span,
+      | Pattern::BinaryOperator(span, ..) => span,
+      | Pattern::Alias(span, ..) => span,
       | Pattern::Wildcard(span) => span,
       | Pattern::Unit(span) => span,
       | Pattern::Tuple(span, _) => span,
@@ -339,8 +339,8 @@ pub enum Statement {
 impl Statement {
   pub fn get_name(&self) -> Option<&str> {
     match self {
-      | Statement::Alias(_, _, _) => None,
-      | Statement::Adt(_, _, _) => None,
+      | Statement::Alias(..) => None,
+      | Statement::Adt(..) => None,
       | Statement::Infix(_, _, name, _) => Some(name),
       | Statement::Port(_, name, _) => Some(name),
       | Statement::Function(func) => Some(&func.name),
@@ -349,9 +349,9 @@ impl Statement {
 
   pub fn get_type(&self) -> Option<&Type> {
     match self {
-      | Statement::Alias(_, _, _) => None,
-      | Statement::Adt(_, _, _) => None,
-      | Statement::Infix(_, _, _, _) => None,
+      | Statement::Alias(..) => None,
+      | Statement::Adt(..) => None,
+      | Statement::Infix(..) => None,
       | Statement::Port(_, _, ty) => Some(ty),
       | Statement::Function(func) => {
         if let Some(ty) = &func.header {

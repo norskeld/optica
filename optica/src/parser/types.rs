@@ -1,9 +1,9 @@
+use super::combinators;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
-use super::combinators;
 
 pub fn parse_type(input: Input) -> Result<(Type, Input), ParseError> {
   let (ty, input) = parse_type_with_adt(input)?;

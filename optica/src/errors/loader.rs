@@ -1,8 +1,8 @@
 use std::io::Error;
 use std::sync::Arc;
 
-use crate::source::SourceFile;
 use super::{LangError, Wrappable};
+use crate::source::SourceFile;
 
 #[derive(Clone, Debug)]
 pub enum LoaderError {

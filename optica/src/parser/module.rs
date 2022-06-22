@@ -1,10 +1,10 @@
+use super::combinators;
+use super::statement;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
-use super::combinators;
-use super::statement;
 
 pub fn parse_module(input: Input) -> Result<(Module, Input), ParseError> {
   let input = skip_empty_lines(input)?;
@@ -233,9 +233,9 @@ fn parse_export(input: Input) -> Result<(ModuleExport, Input), ParseError> {
 mod tests {
   use indoc::indoc;
 
-  use crate::ast::untyped::{AdtExports, Definition, Expression, Literal, Pattern, Statement};
   use super::super::testing;
   use super::*;
+  use crate::ast::untyped::{AdtExports, Definition, Expression, Literal, Pattern, Statement};
 
   #[test]
   fn test_import() {

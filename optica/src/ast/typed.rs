@@ -3,11 +3,11 @@ use std::fmt::{Debug, Error, Formatter};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use super::untyped::*;
+use super::{Float, Int};
 use crate::errors::LangError;
 use crate::runtime::Interpreter;
 use crate::source::Span;
-use super::untyped::*;
-use super::{Float, Int};
 
 /// Unique id for fast comparison between functions.
 pub type FunctionId = usize;
@@ -40,7 +40,7 @@ impl TypedStatement {
       | TypedStatement::Port(_, ty) => Some(ty),
       | TypedStatement::Definition(_, ty) => Some(&ty.header),
       | TypedStatement::Alias(_) => None,
-      | TypedStatement::Adt(_, _) => None,
+      | TypedStatement::Adt(..) => None,
       | TypedStatement::Infix(_, _, ty) => Some(ty),
     }
   }
@@ -73,15 +73,15 @@ pub enum TypedExpression {
 impl TypedExpression {
   pub fn get_span(&self) -> Span {
     *match self {
-      | TypedExpression::Const(span, _, _) => span,
-      | TypedExpression::Tuple(span, _, _) => span,
-      | TypedExpression::List(span, _, _) => span,
-      | TypedExpression::Ref(span, _, _) => span,
-      | TypedExpression::If(span, _, _, _, _) => span,
-      | TypedExpression::Match(span, _, _, _) => span,
-      | TypedExpression::Lambda(span, _, _, _) => span,
-      | TypedExpression::Application(span, _, _, _) => span,
-      | TypedExpression::Let(span, _, _, _) => span,
+      | TypedExpression::Const(span, ..) => span,
+      | TypedExpression::Tuple(span, ..) => span,
+      | TypedExpression::List(span, ..) => span,
+      | TypedExpression::Ref(span, ..) => span,
+      | TypedExpression::If(span, ..) => span,
+      | TypedExpression::Match(span, ..) => span,
+      | TypedExpression::Lambda(span, ..) => span,
+      | TypedExpression::Application(span, ..) => span,
+      | TypedExpression::Let(span, ..) => span,
     }
   }
 
@@ -91,11 +91,11 @@ impl TypedExpression {
       | TypedExpression::Tuple(_, ty, _) => ty.clone(),
       | TypedExpression::List(_, ty, _) => ty.clone(),
       | TypedExpression::Ref(_, ty, _) => ty.clone(),
-      | TypedExpression::If(_, ty, _, _, _) => ty.clone(),
-      | TypedExpression::Match(_, ty, _, _) => ty.clone(),
-      | TypedExpression::Lambda(_, ty, _, _) => ty.clone(),
-      | TypedExpression::Application(_, ty, _, _) => ty.clone(),
-      | TypedExpression::Let(_, ty, _, _) => ty.clone(),
+      | TypedExpression::If(_, ty, ..) => ty.clone(),
+      | TypedExpression::Match(_, ty, ..) => ty.clone(),
+      | TypedExpression::Lambda(_, ty, ..) => ty.clone(),
+      | TypedExpression::Application(_, ty, ..) => ty.clone(),
+      | TypedExpression::Let(_, ty, ..) => ty.clone(),
     }
   }
 }
@@ -206,13 +206,13 @@ impl TypedPattern {
   pub fn get_span(&self) -> Span {
     *match self {
       | TypedPattern::Unit(span) => span,
-      | TypedPattern::Var(span, _, _) => span,
-      | TypedPattern::Adt(span, _, _, _) => span,
-      | TypedPattern::Alias(span, _, _, _) => span,
+      | TypedPattern::Var(span, ..) => span,
+      | TypedPattern::Adt(span, ..) => span,
+      | TypedPattern::Alias(span, ..) => span,
       | TypedPattern::Wildcard(span) => span,
-      | TypedPattern::Tuple(span, _, _) => span,
-      | TypedPattern::List(span, _, _) => span,
-      | TypedPattern::BinaryOperator(span, _, _, _, _) => span,
+      | TypedPattern::Tuple(span, ..) => span,
+      | TypedPattern::List(span, ..) => span,
+      | TypedPattern::BinaryOperator(span, ..) => span,
       | TypedPattern::LitInt(span, _) => span,
       | TypedPattern::LitString(span, _) => span,
       | TypedPattern::LitChar(span, _) => span,
@@ -223,15 +223,15 @@ impl TypedPattern {
     match self {
       | TypedPattern::Unit(_) => Type::Unit,
       | TypedPattern::Var(_, ty, _) => ty.clone(),
-      | TypedPattern::Adt(_, ty, _, _) => ty.clone(),
-      | TypedPattern::Alias(_, ty, _, _) => ty.clone(),
+      | TypedPattern::Adt(_, ty, ..) => ty.clone(),
+      | TypedPattern::Alias(_, ty, ..) => ty.clone(),
       | TypedPattern::Wildcard(_) => Type::Var("_".to_string()),
       | TypedPattern::Tuple(_, ty, _) => ty.clone(),
       | TypedPattern::List(_, ty, _) => ty.clone(),
-      | TypedPattern::BinaryOperator(_, ty, _, _, _) => ty.clone(),
-      | TypedPattern::LitInt(_, _) => Type::Tag("Int".to_string(), vec![]),
-      | TypedPattern::LitString(_, _) => Type::Tag("String".to_string(), vec![]),
-      | TypedPattern::LitChar(_, _) => Type::Tag("Char".to_string(), vec![]),
+      | TypedPattern::BinaryOperator(_, ty, ..) => ty.clone(),
+      | TypedPattern::LitInt(..) => Type::Tag("Int".to_string(), vec![]),
+      | TypedPattern::LitString(..) => Type::Tag("String".to_string(), vec![]),
+      | TypedPattern::LitChar(..) => Type::Tag("Char".to_string(), vec![]),
     }
   }
 }
@@ -282,10 +282,12 @@ impl Value {
         }
       },
       | Value::Tuple(items) => Type::Tuple(items.iter().map(Value::get_type).collect()),
-      | Value::Adt(_, _, adt) => Type::Tag(
-        adt.name.clone(),
-        adt.types.iter().cloned().map(Type::Var).collect(),
-      ),
+      | Value::Adt(_, _, adt) => {
+        Type::Tag(
+          adt.name.clone(),
+          adt.types.iter().cloned().map(Type::Var).collect(),
+        )
+      },
       | Value::Function { function, args, .. } => {
         Value::reduce_args(args.len(), &function.get_type()).clone()
       },
@@ -376,7 +378,7 @@ impl PartialEq for Value {
       ) => lhs_fun == rhs_fun,
 
       // ADTs eq ADTs. This is trivial since [Adt] derives from [PartialEq] and [Hash].
-      | (lhs @ Value::Adt(_, _, _), rhs @ Value::Adt(_, _, _)) => lhs == rhs,
+      | (lhs @ Value::Adt(..), rhs @ Value::Adt(..)) => lhs == rhs,
 
       // All other patters uncomparable, so returning `false`.
       | _ => false,

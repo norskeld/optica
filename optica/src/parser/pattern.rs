@@ -1,9 +1,9 @@
+use super::combinators;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::lexer::Token;
 use crate::source::Input;
 use crate::utils;
-use super::combinators;
 
 pub fn parse_pattern_expr(input: Input) -> Result<(Pattern, Input), ParseError> {
   let (mut pattern, mut input) = parse_pattern(input)?;
@@ -105,22 +105,30 @@ fn parse_pattern_base(input: Input, adt: bool) -> Result<(Pattern, Input), Parse
 
       (Pattern::List((start, input.pos_end()), values), input)
     },
-    | Token::Underscore => (
-      Pattern::Wildcard((start, input.next().pos_end())),
-      input.next(),
-    ),
-    | Token::LitInt(value) => (
-      Pattern::LitInt((start, input.next().pos_end()), value),
-      input.next(),
-    ),
-    | Token::LitChar(value) => (
-      Pattern::LitChar((start, input.next().pos_end()), value),
-      input.next(),
-    ),
-    | Token::LitString(value) => (
-      Pattern::LitString((start, input.next().pos_end()), value),
-      input.next(),
-    ),
+    | Token::Underscore => {
+      (
+        Pattern::Wildcard((start, input.next().pos_end())),
+        input.next(),
+      )
+    },
+    | Token::LitInt(value) => {
+      (
+        Pattern::LitInt((start, input.next().pos_end()), value),
+        input.next(),
+      )
+    },
+    | Token::LitChar(value) => {
+      (
+        Pattern::LitChar((start, input.next().pos_end()), value),
+        input.next(),
+      )
+    },
+    | Token::LitString(value) => {
+      (
+        Pattern::LitString((start, input.next().pos_end()), value),
+        input.next(),
+      )
+    },
     | _ => {
       return Err(ParseError::UnmatchedToken {
         span: input.span(),

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::ast::untyped::*;
 use super::generator::Generator;
+use crate::ast::untyped::*;
 
 #[derive(Debug, Clone)]
 pub struct Context {

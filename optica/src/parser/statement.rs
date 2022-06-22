@@ -1,11 +1,11 @@
-use crate::ast::untyped::*;
-use crate::errors::*;
-use crate::lexer::Token;
-use crate::source::{Input, Span};
 use super::combinators;
 use super::expression;
 use super::pattern;
 use super::types;
+use crate::ast::untyped::*;
+use crate::errors::*;
+use crate::lexer::Token;
+use crate::source::{Input, Span};
 
 pub fn parse_statement(input: Input) -> Result<(Statement, Input), ParseError> {
   let (stmt, input) = match input.read() {
@@ -108,9 +108,9 @@ fn parse_adt_branch(input: Input) -> Result<((Span, String, Vec<Type>), Input), 
 mod tests {
   use indoc::indoc;
 
-  use crate::ast::untyped::{Expression, Literal, Pattern};
   use super::super::testing;
   use super::*;
+  use crate::ast::untyped::{Expression, Literal, Pattern};
 
   #[test]
   fn test_statements() {

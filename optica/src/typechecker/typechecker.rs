@@ -1,18 +1,18 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::ast;
-use crate::ast::untyped::*;
-use crate::ast::typed::*;
-use crate::ast::traverser;
-use crate::errors::*;
-use crate::source::{SourceCode, Span};
-use crate::loader::{self, *};
-use crate::utils::vec::{self, VecExt};
-use crate::utils::path;
-use super::Context;
 use super::fold::{self, ExpressionTreeError};
 use super::helpers;
+use super::Context;
+use crate::ast;
+use crate::ast::traverser;
+use crate::ast::typed::*;
+use crate::ast::untyped::*;
+use crate::errors::*;
+use crate::loader::{self, *};
+use crate::source::{SourceCode, Span};
+use crate::utils::path;
+use crate::utils::vec::{self, VecExt};
 
 #[derive(Debug, Clone)]
 struct Constraint {
@@ -375,16 +375,20 @@ impl Typechecker {
             .collect::<Result<Vec<_>, _>>()?,
         )
       },
-      | Type::Function(param, rest) => Type::Function(
-        Box::new(self.get_canonical_type(span, *param)?),
-        Box::new(self.get_canonical_type(span, *rest)?),
-      ),
-      | Type::Tuple(items) => Type::Tuple(
-        items
-          .into_iter()
-          .map(|it| self.get_canonical_type(span, it))
-          .collect::<Result<Vec<_>, _>>()?,
-      ),
+      | Type::Function(param, rest) => {
+        Type::Function(
+          Box::new(self.get_canonical_type(span, *param)?),
+          Box::new(self.get_canonical_type(span, *rest)?),
+        )
+      },
+      | Type::Tuple(items) => {
+        Type::Tuple(
+          items
+            .into_iter()
+            .map(|it| self.get_canonical_type(span, it))
+            .collect::<Result<Vec<_>, _>>()?,
+        )
+      },
     };
 
     Ok(next_ty)
@@ -422,16 +426,20 @@ impl Typechecker {
       },
       | Type::Unit => Type::Unit,
       | Type::Var(var) => Type::Var(var),
-      | Type::Function(param, rest) => Type::Function(
-        Box::new(self.replace_type_alias(*param)),
-        Box::new(self.replace_type_alias(*rest)),
-      ),
-      | Type::Tuple(types) => Type::Tuple(
-        types
-          .into_iter()
-          .map(|it| self.replace_type_alias(it))
-          .collect(),
-      ),
+      | Type::Function(param, rest) => {
+        Type::Function(
+          Box::new(self.replace_type_alias(*param)),
+          Box::new(self.replace_type_alias(*rest)),
+        )
+      },
+      | Type::Tuple(types) => {
+        Type::Tuple(
+          types
+            .into_iter()
+            .map(|it| self.replace_type_alias(it))
+            .collect(),
+        )
+      },
     }
   }
 
@@ -573,12 +581,14 @@ impl Typechecker {
     let mut statements = statements.iter().collect::<Vec<_>>();
 
     // Sort by type.
-    statements.sort_by_key(|stmt| match *stmt {
-      | Statement::Adt(_, _, _) => 1,
-      | Statement::Alias(_, _, _) => 2,
-      | Statement::Port(_, _, _) => 3,
-      | Statement::Infix(_, _, _, _) => 4,
-      | Statement::Function(_) => 5,
+    statements.sort_by_key(|stmt| {
+      match *stmt {
+        | Statement::Adt(..) => 1,
+        | Statement::Alias(..) => 2,
+        | Statement::Port(..) => 3,
+        | Statement::Infix(..) => 4,
+        | Statement::Function(_) => 5,
+      }
     });
 
     let mut declarations = vec![];
@@ -911,27 +921,31 @@ fn infer_definition_type(
 fn update_type_variables(context: &mut Context, map: &mut HashMap<String, Type>, ty: Type) -> Type {
   match ty {
     | Type::Unit => Type::Unit,
-    | Type::Var(name) => match map.get(&name).cloned() {
-      | Some(var) => var,
-      | None => {
-        let new_ty = if name.starts_with("comparable") {
-          context.next_comparable_type()
-        } else if name.starts_with("appendable") {
-          context.next_appendable_type()
-        } else if name.starts_with("number") {
-          context.next_number_type()
-        } else {
-          context.next_type()
-        };
+    | Type::Var(name) => {
+      match map.get(&name).cloned() {
+        | Some(var) => var,
+        | None => {
+          let new_ty = if name.starts_with("comparable") {
+            context.next_comparable_type()
+          } else if name.starts_with("appendable") {
+            context.next_appendable_type()
+          } else if name.starts_with("number") {
+            context.next_number_type()
+          } else {
+            context.next_type()
+          };
 
-        map.insert(name, new_ty.clone());
-        new_ty
-      },
+          map.insert(name, new_ty.clone());
+          new_ty
+        },
+      }
     },
-    | Type::Function(param, rest) => Type::Function(
-      Box::new(update_type_variables(context, map, *param)),
-      Box::new(update_type_variables(context, map, *rest)),
-    ),
+    | Type::Function(param, rest) => {
+      Type::Function(
+        Box::new(update_type_variables(context, map, *param)),
+        Box::new(update_type_variables(context, map, *rest)),
+      )
+    },
     | Type::Tag(name, items) => {
       let vec: Vec<Type> = items
         .into_iter()
@@ -988,29 +1002,35 @@ fn annotate_pattern(context: &mut Context, pattern: &Pattern) -> Result<TypedPat
     },
     | Pattern::Wildcard(span) => TypedPattern::Wildcard(*span),
     | Pattern::Unit(span) => TypedPattern::Unit(*span),
-    | Pattern::Tuple(span, items) => TypedPattern::Tuple(
-      *span,
-      context.next_type(),
-      items
-        .iter()
-        .map(|it| annotate_pattern(context, it))
-        .collect::<Result<_, _>>()?,
-    ),
-    | Pattern::List(span, patterns) => TypedPattern::List(
-      *span,
-      context.next_type(),
-      patterns
-        .iter()
-        .map(|it| annotate_pattern(context, it))
-        .collect::<Result<_, _>>()?,
-    ),
-    | Pattern::BinaryOperator(span, op, a, b) => TypedPattern::BinaryOperator(
-      *span,
-      context.next_type(),
-      op.clone(),
-      Box::new(annotate_pattern(context, a)?),
-      Box::new(annotate_pattern(context, b)?),
-    ),
+    | Pattern::Tuple(span, items) => {
+      TypedPattern::Tuple(
+        *span,
+        context.next_type(),
+        items
+          .iter()
+          .map(|it| annotate_pattern(context, it))
+          .collect::<Result<_, _>>()?,
+      )
+    },
+    | Pattern::List(span, patterns) => {
+      TypedPattern::List(
+        *span,
+        context.next_type(),
+        patterns
+          .iter()
+          .map(|it| annotate_pattern(context, it))
+          .collect::<Result<_, _>>()?,
+      )
+    },
+    | Pattern::BinaryOperator(span, op, a, b) => {
+      TypedPattern::BinaryOperator(
+        *span,
+        context.next_type(),
+        op.clone(),
+        Box::new(annotate_pattern(context, a)?),
+        Box::new(annotate_pattern(context, b)?),
+      )
+    },
     | Pattern::LitInt(span, value) => TypedPattern::LitInt(*span, *value),
     | Pattern::LitString(span, value) => TypedPattern::LitString(*span, value.clone()),
     | Pattern::LitChar(span, value) => TypedPattern::LitChar(*span, *value),
@@ -1033,26 +1053,24 @@ fn annotate_expression(
     | Expression::QualifiedRef(span, base, name) => {
       let name = path::qualified_name(base, name);
 
-      let ty = context
-        .get(&name)
-        .cloned()
-        .ok_or_else(|| TypeError::MissingDefinition {
+      let ty = context.get(&name).cloned().ok_or_else(|| {
+        TypeError::MissingDefinition {
           span: *span,
           name: name.to_string(),
-        })?;
+        }
+      })?;
 
       let ty = update_type_variables(context, &mut HashMap::new(), ty);
 
       TypedExpression::Ref(*span, ty, name)
     },
     | Expression::Ref(span, name) => {
-      let ty = context
-        .get(name)
-        .cloned()
-        .ok_or_else(|| TypeError::MissingDefinition {
+      let ty = context.get(name).cloned().ok_or_else(|| {
+        TypeError::MissingDefinition {
           span: *span,
           name: name.to_string(),
-        })?;
+        }
+      })?;
 
       let ty = if let Type::Var(_) = &ty {
         ty
@@ -1088,13 +1106,15 @@ fn annotate_expression(
 
       TypedExpression::List(*span, context.next_type(), expressions)
     },
-    | Expression::If(span, cond, then_, else_) => TypedExpression::If(
-      *span,
-      context.next_type(),
-      Box::new(annotate_expression(context, cond)?),
-      Box::new(annotate_expression(context, then_)?),
-      Box::new(annotate_expression(context, else_)?),
-    ),
+    | Expression::If(span, cond, then_, else_) => {
+      TypedExpression::If(
+        *span,
+        context.next_type(),
+        Box::new(annotate_expression(context, cond)?),
+        Box::new(annotate_expression(context, then_)?),
+        Box::new(annotate_expression(context, else_)?),
+      )
+    },
     | Expression::Lambda(span, patterns, expression) => {
       let patterns = patterns
         .iter()
@@ -1111,12 +1131,14 @@ fn annotate_expression(
 
       TypedExpression::Lambda(*span, context.next_type(), patterns, Box::new(expr))
     },
-    | Expression::Application(span, a, b) => TypedExpression::Application(
-      *span,
-      context.next_type(),
-      Box::new(annotate_expression(context, a)?),
-      Box::new(annotate_expression(context, b)?),
-    ),
+    | Expression::Application(span, a, b) => {
+      TypedExpression::Application(
+        *span,
+        context.next_type(),
+        Box::new(annotate_expression(context, a)?),
+        Box::new(annotate_expression(context, b)?),
+      )
+    },
     | Expression::OperatorChain(span, expressions, operators) => {
       match fold::create_expression_tree(expressions, operators) {
         | Ok(tree) => annotate_expression(context, &fold::to_expression(tree))?,
@@ -1294,12 +1316,12 @@ fn collect_pattern_constraints(constraints: &mut Vec<Constraint>, typed_pattern:
     | TypedPattern::Alias(_, _, pattern, _) => {
       collect_pattern_constraints(constraints, pattern);
     },
-    | TypedPattern::Var(_, _, _)
+    | TypedPattern::Var(..)
     | TypedPattern::Unit(_)
     | TypedPattern::Wildcard(_)
-    | TypedPattern::LitInt(_, _)
-    | TypedPattern::LitString(_, _)
-    | TypedPattern::LitChar(_, _) => { /* Ignored */ },
+    | TypedPattern::LitInt(..)
+    | TypedPattern::LitString(..)
+    | TypedPattern::LitChar(..) => { /* Ignored */ },
   }
 }
 
@@ -1389,7 +1411,7 @@ fn collect_expression_constraints(
     | TypedExpression::Let(_, _, _, expression) => {
       collect_expression_constraints(constraints, expression);
     },
-    | TypedExpression::Ref(_, _, _) | TypedExpression::Const(_, _, _) => { /* Ignored */ },
+    | TypedExpression::Ref(..) | TypedExpression::Const(..) => { /* Ignored */ },
   }
 }
 
@@ -1487,11 +1509,13 @@ fn unify_var(constraint: &Constraint, var: &str, ty: &Type) -> Result<Substituti
   match ty {
     | Type::Var(other_var) if var == other_var => Ok(Substitution::empty()),
     | Type::Var(_) => Ok(Substitution::var_pair(var, ty)),
-    | _ if occurs(var, ty) => Err(TypeError::RecursiveTypeDefinition {
-      span: constraint.span,
-      var: var.to_string(),
-      ty: ty.clone(),
-    }),
+    | _ if occurs(var, ty) => {
+      Err(TypeError::RecursiveTypeDefinition {
+        span: constraint.span,
+        var: var.to_string(),
+        ty: ty.clone(),
+      })
+    },
     | _ => Ok(Substitution::var_pair(var, ty)),
   }
 }
@@ -1540,14 +1564,18 @@ fn apply_substitution(ty: &Type, var: &Type, replacement: &Type) -> Type {
         ty.clone()
       }
     },
-    | Type::Tag(name, types) => Type::Tag(
-      name.clone(),
-      types.map(|it| apply_substitution(it, var, replacement)),
-    ),
-    | Type::Function(param, rest) => Type::Function(
-      Box::new(apply_substitution(param, var, replacement)),
-      Box::new(apply_substitution(rest, var, replacement)),
-    ),
+    | Type::Tag(name, types) => {
+      Type::Tag(
+        name.clone(),
+        types.map(|it| apply_substitution(it, var, replacement)),
+      )
+    },
+    | Type::Function(param, rest) => {
+      Type::Function(
+        Box::new(apply_substitution(param, var, replacement)),
+        Box::new(apply_substitution(rest, var, replacement)),
+      )
+    },
     | Type::Tuple(types) => Type::Tuple(types.map(|it| apply_substitution(it, var, replacement))),
   }
 }
@@ -1555,46 +1583,56 @@ fn apply_substitution(ty: &Type, var: &Type, replacement: &Type) -> Type {
 fn replace_pattern_types(sbst: &Substitution, pattern: TypedPattern) -> TypedPattern {
   match pattern {
     | TypedPattern::Var(a, b, c) => TypedPattern::Var(a, sbst.replace(b), c),
-    | TypedPattern::Adt(a, b, c, d) => TypedPattern::Adt(
-      a,
-      sbst.replace(b),
-      sbst.replace(c),
-      d.into_iter()
-        .map(|it| replace_pattern_types(sbst, it))
-        .collect(),
-    ),
+    | TypedPattern::Adt(a, b, c, d) => {
+      TypedPattern::Adt(
+        a,
+        sbst.replace(b),
+        sbst.replace(c),
+        d.into_iter()
+          .map(|it| replace_pattern_types(sbst, it))
+          .collect(),
+      )
+    },
     | TypedPattern::Wildcard(a) => TypedPattern::Wildcard(a),
     | TypedPattern::Unit(a) => TypedPattern::Unit(a),
-    | TypedPattern::Tuple(a, b, c) => TypedPattern::Tuple(
-      a,
-      sbst.replace(b),
-      c.into_iter()
-        .map(|it| replace_pattern_types(sbst, it))
-        .collect(),
-    ),
-    | TypedPattern::List(a, b, c) => TypedPattern::List(
-      a,
-      sbst.replace(b),
-      c.into_iter()
-        .map(|it| replace_pattern_types(sbst, it))
-        .collect(),
-    ),
-    | TypedPattern::BinaryOperator(a, b, c, d, e) => TypedPattern::BinaryOperator(
-      a,
-      sbst.replace(b),
-      c,
-      Box::new(replace_pattern_types(sbst, *d)),
-      Box::new(replace_pattern_types(sbst, *e)),
-    ),
+    | TypedPattern::Tuple(a, b, c) => {
+      TypedPattern::Tuple(
+        a,
+        sbst.replace(b),
+        c.into_iter()
+          .map(|it| replace_pattern_types(sbst, it))
+          .collect(),
+      )
+    },
+    | TypedPattern::List(a, b, c) => {
+      TypedPattern::List(
+        a,
+        sbst.replace(b),
+        c.into_iter()
+          .map(|it| replace_pattern_types(sbst, it))
+          .collect(),
+      )
+    },
+    | TypedPattern::BinaryOperator(a, b, c, d, e) => {
+      TypedPattern::BinaryOperator(
+        a,
+        sbst.replace(b),
+        c,
+        Box::new(replace_pattern_types(sbst, *d)),
+        Box::new(replace_pattern_types(sbst, *e)),
+      )
+    },
     | TypedPattern::LitInt(a, b) => TypedPattern::LitInt(a, b),
     | TypedPattern::LitString(a, b) => TypedPattern::LitString(a, b),
     | TypedPattern::LitChar(a, b) => TypedPattern::LitChar(a, b),
-    | TypedPattern::Alias(a, b, c, d) => TypedPattern::Alias(
-      a,
-      sbst.replace(b),
-      Box::new(replace_pattern_types(sbst, *c)),
-      d,
-    ),
+    | TypedPattern::Alias(a, b, c, d) => {
+      TypedPattern::Alias(
+        a,
+        sbst.replace(b),
+        Box::new(replace_pattern_types(sbst, *c)),
+        d,
+      )
+    },
   }
 }
 
@@ -1606,59 +1644,73 @@ fn replace_expression_types(
     | TypedExpression::Const(span, ty, value) => {
       TypedExpression::Const(span, sbst.replace(ty), value)
     },
-    | TypedExpression::Tuple(span, ty, expressions) => TypedExpression::Tuple(
-      span,
-      sbst.replace(ty),
-      expressions
-        .into_iter()
-        .map(|it| replace_expression_types(sbst, it))
-        .collect(),
-    ),
-    | TypedExpression::List(span, ty, expressions) => TypedExpression::List(
-      span,
-      sbst.replace(ty),
-      expressions
-        .into_iter()
-        .map(|it| replace_expression_types(sbst, it))
-        .collect(),
-    ),
+    | TypedExpression::Tuple(span, ty, expressions) => {
+      TypedExpression::Tuple(
+        span,
+        sbst.replace(ty),
+        expressions
+          .into_iter()
+          .map(|it| replace_expression_types(sbst, it))
+          .collect(),
+      )
+    },
+    | TypedExpression::List(span, ty, expressions) => {
+      TypedExpression::List(
+        span,
+        sbst.replace(ty),
+        expressions
+          .into_iter()
+          .map(|it| replace_expression_types(sbst, it))
+          .collect(),
+      )
+    },
     | TypedExpression::Ref(span, ty, a) => TypedExpression::Ref(span, sbst.replace(ty), a),
-    | TypedExpression::If(span, ty, cond, then_, else_) => TypedExpression::If(
-      span,
-      sbst.replace(ty),
-      Box::new(replace_expression_types(sbst, *cond)),
-      Box::new(replace_expression_types(sbst, *then_)),
-      Box::new(replace_expression_types(sbst, *else_)),
-    ),
-    | TypedExpression::Match(span, ty, expression, branches) => TypedExpression::Match(
-      span,
-      sbst.replace(ty),
-      Box::new(replace_expression_types(sbst, *expression)),
-      branches
-        .into_iter()
-        .map(|(branch_pattern, branch_expr)| {
-          (branch_pattern, replace_expression_types(sbst, branch_expr))
-        })
-        .collect::<Vec<_>>(),
-    ),
-    | TypedExpression::Lambda(span, ty, a, b) => TypedExpression::Lambda(
-      span,
-      sbst.replace(ty),
-      a,
-      Box::new(replace_expression_types(sbst, *b)),
-    ),
-    | TypedExpression::Application(span, ty, a, b) => TypedExpression::Application(
-      span,
-      sbst.replace(ty),
-      Box::new(replace_expression_types(sbst, *a)),
-      Box::new(replace_expression_types(sbst, *b)),
-    ),
-    | TypedExpression::Let(span, ty, let_defs, let_expr) => TypedExpression::Let(
-      span,
-      sbst.replace(ty),
-      let_defs,
-      Box::new(replace_expression_types(sbst, *let_expr)),
-    ),
+    | TypedExpression::If(span, ty, cond, then_, else_) => {
+      TypedExpression::If(
+        span,
+        sbst.replace(ty),
+        Box::new(replace_expression_types(sbst, *cond)),
+        Box::new(replace_expression_types(sbst, *then_)),
+        Box::new(replace_expression_types(sbst, *else_)),
+      )
+    },
+    | TypedExpression::Match(span, ty, expression, branches) => {
+      TypedExpression::Match(
+        span,
+        sbst.replace(ty),
+        Box::new(replace_expression_types(sbst, *expression)),
+        branches
+          .into_iter()
+          .map(|(branch_pattern, branch_expr)| {
+            (branch_pattern, replace_expression_types(sbst, branch_expr))
+          })
+          .collect::<Vec<_>>(),
+      )
+    },
+    | TypedExpression::Lambda(span, ty, a, b) => {
+      TypedExpression::Lambda(
+        span,
+        sbst.replace(ty),
+        a,
+        Box::new(replace_expression_types(sbst, *b)),
+      )
+    },
+    | TypedExpression::Application(span, ty, a, b) => {
+      TypedExpression::Application(
+        span,
+        sbst.replace(ty),
+        Box::new(replace_expression_types(sbst, *a)),
+        Box::new(replace_expression_types(sbst, *b)),
+      )
+    },
+    | TypedExpression::Let(span, ty, let_defs, let_expr) => {
+      TypedExpression::Let(
+        span,
+        sbst.replace(ty),
+        let_defs,
+        Box::new(replace_expression_types(sbst, *let_expr)),
+      )
+    },
   }
 }
 
@@ -1686,8 +1738,8 @@ fn add_pattern_vars_to_context(context: &mut Context, pattern: &TypedPattern) {
     },
     | TypedPattern::Unit(_)
     | TypedPattern::Wildcard(_)
-    | TypedPattern::LitInt(_, _)
-    | TypedPattern::LitString(_, _)
-    | TypedPattern::LitChar(_, _) => { /* Ignored */ },
+    | TypedPattern::LitInt(..)
+    | TypedPattern::LitString(..)
+    | TypedPattern::LitChar(..) => { /* Ignored */ },
   }
 }

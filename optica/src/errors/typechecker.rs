@@ -1,5 +1,5 @@
-use crate::ast::untyped::*;
 use crate::ast::typed::*;
+use crate::ast::untyped::*;
 use crate::source::Span;
 
 #[derive(PartialEq, Debug, Clone)]

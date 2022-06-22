@@ -2,13 +2,13 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::Stack;
 use crate::ast;
 use crate::ast::typed::*;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::intrinsics;
 use crate::loader::*;
-use super::Stack;
 
 #[derive(Clone, Debug)]
 pub struct Interpreter {
@@ -128,12 +128,14 @@ impl Interpreter {
           .wrap(),
         )
       },
-      | TypedExpression::Lambda(_, ty, pattern, expr) => Ok(Self::create_lambda_closure(
-        &mut self.stack,
-        ty,
-        pattern,
-        expr,
-      )),
+      | TypedExpression::Lambda(_, ty, pattern, expr) => {
+        Ok(Self::create_lambda_closure(
+          &mut self.stack,
+          ty,
+          pattern,
+          expr,
+        ))
+      },
       | TypedExpression::Application(_, _, function, input) => {
         let function = self.eval_expression(function)?;
         let input = self.eval_expression(input)?;
@@ -516,9 +518,9 @@ pub fn add_pattern_values(
         return Err(InterpreterError::UnknownOperatorPattern(op.clone()));
       }
     },
-    | TypedPattern::LitInt(_, _)
-    | TypedPattern::LitString(_, _)
-    | TypedPattern::LitChar(_, _)
+    | TypedPattern::LitInt(..)
+    | TypedPattern::LitString(..)
+    | TypedPattern::LitChar(..)
     | TypedPattern::Wildcard(_)
     | TypedPattern::Unit(_) => { /* Ignored. */ },
   }
@@ -528,7 +530,7 @@ pub fn add_pattern_values(
 
 fn matches_pattern(typed_pattern: &TypedPattern, value: &Value) -> bool {
   match typed_pattern {
-    | TypedPattern::Var(_, _, _) => true,
+    | TypedPattern::Var(..) => true,
     | TypedPattern::Wildcard(_) => true,
     | TypedPattern::Alias(_, _, pattern, _) => matches_pattern(pattern, value),
     | TypedPattern::Adt(_, _, pattern_ty, pattern_sub) => {
@@ -579,10 +581,12 @@ fn matches_pattern(typed_pattern: &TypedPattern, value: &Value) -> bool {
         false
       }
     },
-    | TypedPattern::LitInt(_, p) => match value {
-      | Value::Int(v) => (*p) == (*v),
-      | Value::Number(v) => (*p) == (*v),
-      | _ => false,
+    | TypedPattern::LitInt(_, p) => {
+      match value {
+        | Value::Int(v) => (*p) == (*v),
+        | Value::Number(v) => (*p) == (*v),
+        | _ => false,
+      }
     },
     | TypedPattern::LitString(_, p) => {
       if let Value::String(v) = value {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use super::Interpreter;
 use crate::ast::typed::*;
 use crate::errors::*;
 use crate::lexer::Lexer;
@@ -7,7 +8,6 @@ use crate::loader::*;
 use crate::parser::Parser;
 use crate::source::{SourceCode, SourceFile};
 use crate::typechecker::Typechecker;
-use super::Interpreter;
 
 #[derive(Debug)]
 pub struct Runtime {

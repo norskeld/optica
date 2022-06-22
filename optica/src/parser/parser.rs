@@ -1,13 +1,13 @@
-use crate::ast::untyped::*;
-use crate::errors::*;
-use crate::lexer::Lexer;
-use crate::source::{Input, SourceCode};
 use super::combinators;
 use super::expression;
 use super::module;
 use super::pattern;
 use super::statement;
 use super::types;
+use crate::ast::untyped::*;
+use crate::errors::*;
+use crate::lexer::Lexer;
+use crate::source::{Input, SourceCode};
 
 pub struct Parser {
   code: SourceCode,

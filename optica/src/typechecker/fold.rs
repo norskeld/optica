@@ -1,5 +1,5 @@
-use crate::ast::untyped::*;
 use self::ExpressionTreeError::*;
+use crate::ast::untyped::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionTree {
@@ -98,10 +98,12 @@ fn create_tree(
       | &ExpressionKind::Expression(ref expression) => {
         Ok((&tokens[1..], ExpressionTree::Leaf(expression.clone())))
       },
-      | _ => Err(InternalError(format!(
-        "Illegal expression tree state, token: {:#?}",
-        tokens
-      ))),
+      | _ => {
+        Err(InternalError(format!(
+          "Illegal expression tree state, token: {:#?}",
+          tokens
+        )))
+      },
     };
   }
 

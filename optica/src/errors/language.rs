@@ -1,5 +1,5 @@
-use crate::source::SourceCode;
 use super::*;
+use crate::source::SourceCode;
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum LangError {

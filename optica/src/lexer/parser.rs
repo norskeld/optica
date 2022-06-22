@@ -1,14 +1,14 @@
-use nom::IResult;
 use nom::branch::*;
 use nom::character::complete::*;
 use nom::combinator::*;
 use nom::multi::*;
 use nom::sequence::*;
+use nom::IResult;
 
+use super::helpers;
+use super::Token;
 use crate::ast::Int;
 use crate::utils;
-use super::Token;
-use super::helpers;
 
 pub type ParseResult<'a, T> = IResult<&'a [u8], T>;
 
@@ -212,8 +212,8 @@ fn end_of_file(input: &[u8]) -> ParseResult<'_, Token> {
 
 #[cfg(test)]
 mod tests {
-  use crate::assert_ok;
   use super::*;
+  use crate::assert_ok;
 
   #[test]
   fn test_line_string() {
