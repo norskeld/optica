@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::Stack;
-use crate::ast;
 use crate::ast::typed::*;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::intrinsics;
 use crate::loader::*;
+use crate::types;
 
 #[derive(Clone, Debug)]
 pub struct Interpreter {
@@ -38,7 +38,7 @@ impl Interpreter {
     self
       .eval_expression(&TypedExpression::Ref(
         (0, 0),
-        ast::type_bool(),
+        types::type_bool(),
         "True".to_string(),
       ))
       .unwrap()
@@ -48,7 +48,7 @@ impl Interpreter {
     self
       .eval_expression(&TypedExpression::Ref(
         (0, 0),
-        ast::type_bool(),
+        types::type_bool(),
         "False".to_string(),
       ))
       .unwrap()
@@ -324,7 +324,7 @@ impl Interpreter {
     self.stack.enter_block();
 
     let result = match function {
-      | Function::External { function, .. } => {
+      | Function::Intrinsic { function, .. } => {
         // TODO: This probably should not map to `InterpreterError::BuiltinFunctionError` and just
         // propagate produced error.
         (function.function)(self, &arguments)
@@ -363,7 +363,7 @@ impl Interpreter {
     typed_expression: &TypedExpression,
   ) -> Value {
     let function = Arc::new(Function::Definition {
-      id: ast::function_id(),
+      id: types::function_id(),
       patterns: typed_patterns.to_owned(),
       expression: typed_expression.clone(),
       captures: Self::extract_captures(stack, typed_expression),
@@ -379,7 +379,7 @@ impl Interpreter {
 
   pub fn create_function_closure(stack: &mut Stack, typed_definition: &TypedDefinition) -> Value {
     let function = Arc::new(Function::Definition {
-      id: ast::function_id(),
+      id: types::function_id(),
       patterns: typed_definition.patterns.clone(),
       expression: typed_definition.expression.clone(),
       captures: Self::extract_captures(stack, &typed_definition.expression),

@@ -20,10 +20,6 @@ pub struct Runtime {
 
 impl Runtime {
   pub fn new() -> Runtime {
-    Self::fresh()
-  }
-
-  pub fn fresh() -> Runtime {
     Runtime {
       interpreter: Interpreter::new(),
       typechecker: Typechecker::new(SourceCode::from_str("")),

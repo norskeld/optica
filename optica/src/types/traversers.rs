@@ -1,4 +1,4 @@
-use super::untyped::*;
+use crate::ast::untyped::*;
 
 pub fn traverse_type<S, F>(state: &mut S, root: &Type, traverser: &F)
 where

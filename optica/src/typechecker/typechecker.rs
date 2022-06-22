@@ -4,13 +4,13 @@ use std::sync::Arc;
 use super::fold::{self, ExpressionTreeError};
 use super::helpers;
 use super::Context;
-use crate::ast;
-use crate::ast::traverser;
 use crate::ast::typed::*;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::loader::*;
 use crate::source::{SourceCode, Span};
+use crate::types;
+use crate::types::traversers;
 use crate::utils::path;
 use crate::utils::vec::{self, VecExt};
 
@@ -194,7 +194,7 @@ impl Typechecker {
   ) -> Result<Vec<TypedStatement>, LangError> {
     let mut used_vars: HashSet<String> = HashSet::new();
 
-    traverser::traverse_type(&mut used_vars, ty, &|set, node| {
+    traversers::traverse_type(&mut used_vars, ty, &|set, node| {
       if let Type::Var(var) = &node {
         set.insert(var.clone());
       }
@@ -454,7 +454,7 @@ impl Typechecker {
       destination_name: "__internal__minus".to_string(),
     }];
 
-    self.add_port("__internal__minus", ast::type_unary_minus());
+    self.add_port("__internal__minus", types::type_unary_minus());
 
     // Add rest of imports.
     for import in imports {
@@ -882,7 +882,7 @@ fn infer_definition_type(
       constraints.push(Constraint::new(
         annotated_expr.get_span(),
         &definition_type,
-        &ast::type_func(func_types),
+        &types::type_function(func_types),
       ));
 
       // Constraint solutions.
@@ -1248,7 +1248,7 @@ fn collect_type_definition_constraints(
 
   constraints.push(Constraint::new(
     expr.get_span(),
-    &ast::type_func(types),
+    &types::type_function(types),
     &expr.get_type(),
   ));
 }
@@ -1269,7 +1269,7 @@ fn collect_pattern_constraints(constraints: &mut Vec<Constraint>, typed_pattern:
       constraints.push(Constraint::new(
         typed_pattern.get_span(),
         ctor_type,
-        &ast::type_func(ctor),
+        &types::type_function(ctor),
       ));
 
       constraints.push(Constraint::new(typed_pattern.get_span(), ty, &adt_type));
@@ -1289,7 +1289,7 @@ fn collect_pattern_constraints(constraints: &mut Vec<Constraint>, typed_pattern:
         constraints.push(Constraint::new(
           typed_pattern.get_span(),
           ty,
-          &ast::type_list(it.get_type()),
+          &types::type_list(it.get_type()),
         ));
 
         collect_pattern_constraints(constraints, it);
@@ -1301,13 +1301,13 @@ fn collect_pattern_constraints(constraints: &mut Vec<Constraint>, typed_pattern:
       constraints.push(Constraint::new(
         typed_pattern.get_span(),
         ty,
-        &ast::type_list(a.get_type()),
+        &types::type_list(a.get_type()),
       ));
 
       constraints.push(Constraint::new(
         typed_pattern.get_span(),
         &b.get_type(),
-        &ast::type_list(a.get_type()),
+        &types::type_list(a.get_type()),
       ));
 
       collect_pattern_constraints(constraints, a);
@@ -1346,7 +1346,7 @@ fn collect_expression_constraints(
         constraints.push(Constraint::new(
           expression.get_span(),
           ty,
-          &ast::type_list(expression.get_type()),
+          &types::type_list(expression.get_type()),
         ));
 
         collect_expression_constraints(constraints, expression);
@@ -1356,7 +1356,7 @@ fn collect_expression_constraints(
       constraints.push(Constraint::new(
         typed_expression.get_span(),
         &cond.get_type(),
-        &ast::type_bool(),
+        &types::type_bool(),
       ));
 
       constraints.push(Constraint::new(
@@ -1394,7 +1394,7 @@ fn collect_expression_constraints(
       }
 
       chain.push(expression.get_type());
-      constraints.push(Constraint::new(*span, ty, &ast::type_func(chain)));
+      constraints.push(Constraint::new(*span, ty, &types::type_function(chain)));
 
       collect_expression_constraints(constraints, expression);
     },

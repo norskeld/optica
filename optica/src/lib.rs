@@ -10,4 +10,5 @@ pub(crate) mod parser;
 pub mod runtime;
 pub(crate) mod source;
 pub(crate) mod typechecker;
+pub(crate) mod types;
 pub(crate) mod utils;

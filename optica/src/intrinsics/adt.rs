@@ -1,26 +1,24 @@
 use std::sync::Arc;
 
-use crate::ast;
 use crate::ast::typed::*;
 use crate::errors::*;
+use crate::types;
 
 pub fn adt_constructor(adt: Arc<Adt>, variant: &AdtVariant) -> Value {
-  let mut func_types = vec![ast::type_tag_args(&variant.name, vec![])];
+  let mut function_types = vec![types::type_tag(&variant.name)];
 
-  func_types.extend(variant.types.clone().into_iter());
-  func_types.push(ast::type_tag_args(&variant.name, variant.types.clone()));
+  function_types.extend(variant.types.clone().into_iter());
+  function_types.push(types::type_tag_parameterized(
+    &variant.name,
+    variant.types.clone(),
+  ));
 
-  let external_function = ExternalFunction {
+  let function = IntrinsicFunction {
     name: "ADT constructor".to_string(),
     function: |_, args| {
       if let Value::Adt(var, _, adt) = &args[0] {
-        let mut vals: Vec<Value> = vec![];
-
-        for argument in args.iter().skip(1) {
-          vals.push(argument.clone());
-        }
-
-        Ok(Value::Adt(var.to_owned(), vals, adt.clone()))
+        let values = args.iter().skip(1).cloned().collect();
+        Ok(Value::Adt(var.to_owned(), values, adt.clone()))
       } else {
         Err(InterpreterError::InternalErrorAdtCreation(args[0].clone()).wrap())
       }
@@ -28,12 +26,12 @@ pub fn adt_constructor(adt: Arc<Adt>, variant: &AdtVariant) -> Value {
   };
 
   Value::Function {
-    arity: func_types.len() as u32,
+    arity: function_types.len() as u32,
     args: vec![Value::Adt(variant.name.to_string(), vec![], adt)],
-    function: Arc::new(Function::External {
-      id: ast::function_id(),
-      function: external_function,
-      function_type: ast::type_func(func_types),
+    function: Arc::new(Function::Intrinsic {
+      id: types::function_id(),
+      function,
+      function_type: types::type_function(function_types),
     }),
   }
 }

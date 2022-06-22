@@ -1,7 +1,11 @@
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 
 use super::{Float, Int};
-use crate::source::Span;
+use crate::errors::LangError;
+use crate::lexer::Lexer;
+use crate::parser::Parser;
+use crate::source::{SourceCode, Span};
 
 /// Unevaluated expression tree.
 #[derive(Debug, Clone)]
@@ -343,7 +347,7 @@ impl Statement {
       | Statement::Adt(..) => None,
       | Statement::Infix(_, _, name, _) => Some(name),
       | Statement::Port(_, name, _) => Some(name),
-      | Statement::Function(func) => Some(&func.name),
+      | Statement::Function(definition) => Some(&definition.name),
     }
   }
 
@@ -353,8 +357,8 @@ impl Statement {
       | Statement::Adt(..) => None,
       | Statement::Infix(..) => None,
       | Statement::Port(_, _, ty) => Some(ty),
-      | Statement::Function(func) => {
-        if let Some(ty) = &func.header {
+      | Statement::Function(definition) => {
+        if let Some(ty) = &definition.header {
           Some(ty)
         } else {
           None
@@ -377,6 +381,18 @@ pub enum Type {
   Tag(String, Vec<Type>),
   Function(Box<Type>, Box<Type>),
   Tuple(Vec<Type>),
+}
+
+impl FromStr for Type {
+  type Err = LangError;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    let code = SourceCode::from_str(s);
+    let lexer = Lexer::new(&code);
+    let mut parser = Parser::new(lexer);
+
+    parser.parse_type()
+  }
 }
 
 #[derive(Debug, PartialEq, Clone)]

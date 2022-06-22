@@ -8,12 +8,13 @@ use super::{Float, Int};
 use crate::errors::LangError;
 use crate::runtime::Interpreter;
 use crate::source::Span;
+use crate::types;
 
 /// Unique id for fast comparison between functions.
 pub type FunctionId = usize;
 
-/// Built-in function alias.
-pub type BuiltinFunction = fn(&mut Interpreter, &[Value]) -> Result<Value, LangError>;
+/// Intrinsic function alias.
+pub type IntrinsicFn = fn(&mut Interpreter, &[Value]) -> Result<Value, LangError>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypedStatement {
@@ -221,17 +222,17 @@ impl TypedPattern {
 
   pub fn get_type(&self) -> Type {
     match self {
-      | TypedPattern::Unit(_) => Type::Unit,
+      | TypedPattern::Unit(_) => types::type_unit(),
       | TypedPattern::Var(_, ty, _) => ty.clone(),
       | TypedPattern::Adt(_, ty, ..) => ty.clone(),
       | TypedPattern::Alias(_, ty, ..) => ty.clone(),
-      | TypedPattern::Wildcard(_) => Type::Var("_".to_string()),
+      | TypedPattern::Wildcard(_) => types::type_var("_"),
       | TypedPattern::Tuple(_, ty, _) => ty.clone(),
       | TypedPattern::List(_, ty, _) => ty.clone(),
       | TypedPattern::BinaryOperator(_, ty, ..) => ty.clone(),
-      | TypedPattern::LitInt(..) => Type::Tag("Int".to_string(), vec![]),
-      | TypedPattern::LitString(..) => Type::Tag("String".to_string(), vec![]),
-      | TypedPattern::LitChar(..) => Type::Tag("Char".to_string(), vec![]),
+      | TypedPattern::LitInt(..) => types::type_int(),
+      | TypedPattern::LitString(..) => types::type_string(),
+      | TypedPattern::LitChar(..) => types::type_char(),
     }
   }
 }
@@ -268,37 +269,40 @@ pub enum Value {
 impl Value {
   pub fn get_type(&self) -> Type {
     match self {
-      | Value::Unit => Type::Unit,
-      | Value::Number(_) => Type::Var("number".to_string()),
-      | Value::Int(_) => Type::Tag("Int".to_string(), vec![]),
-      | Value::Float(_) => Type::Tag("Float".to_string(), vec![]),
-      | Value::String(_) => Type::Tag("String".to_string(), vec![]),
-      | Value::Char(_) => Type::Tag("Char".to_string(), vec![]),
-      | Value::List(items) => {
-        if items.is_empty() {
-          Type::Tag("List".to_string(), vec![Type::Var("a".to_string())])
+      | Value::Unit => types::type_unit(),
+      | Value::Number(_) => types::type_number(),
+      | Value::Int(_) => types::type_int(),
+      | Value::Float(_) => types::type_float(),
+      | Value::String(_) => types::type_string(),
+      | Value::Char(_) => types::type_char(),
+      | Value::List(values) => {
+        if values.is_empty() {
+          types::type_tag_parameterized("List", vec![types::type_var("a")])
         } else {
-          Type::Tag("List".to_string(), vec![items.first().unwrap().get_type()])
+          // NOTE: Here, `unwrap` is safe, because we checked for vector size.
+          types::type_tag_parameterized("List", vec![values.first().unwrap().get_type()])
         }
       },
-      | Value::Tuple(items) => Type::Tuple(items.iter().map(Value::get_type).collect()),
+      | Value::Tuple(values) => {
+        types::type_tuple(values.iter().map(Value::get_type).collect::<Vec<_>>())
+      },
       | Value::Adt(_, _, adt) => {
-        Type::Tag(
-          adt.name.clone(),
-          adt.types.iter().cloned().map(Type::Var).collect(),
+        types::type_tag_parameterized(
+          &adt.name,
+          adt.types.iter().cloned().map(Type::Var).collect::<Vec<_>>(),
         )
       },
       | Value::Function { function, args, .. } => {
-        Value::reduce_args(args.len(), &function.get_type()).clone()
+        Value::get_function_return_type(args.len(), &function.get_type()).clone()
       },
     }
   }
 
-  fn reduce_args(args: usize, ty: &Type) -> &Type {
+  fn get_function_return_type(args: usize, ty: &Type) -> &Type {
     if args == 0 {
       ty
-    } else if let Type::Function(_, ref output) = ty {
-      Self::reduce_args(args - 1, output)
+    } else if let Type::Function(_, ref rest) = ty {
+      Self::get_function_return_type(args - 1, rest)
     } else {
       ty
     }
@@ -415,9 +419,9 @@ pub struct AdtVariant {
 /// Represents a function that can be a definition or a built-in.
 #[derive(Debug)]
 pub enum Function {
-  External {
+  Intrinsic {
     id: FunctionId,
-    function: ExternalFunction,
+    function: IntrinsicFunction,
     function_type: Type,
   },
   Definition {
@@ -432,14 +436,14 @@ pub enum Function {
 impl Function {
   fn get_id(&self) -> FunctionId {
     match self {
-      | Self::External { id, .. } => *id,
+      | Self::Intrinsic { id, .. } => *id,
       | Self::Definition { id, .. } => *id,
     }
   }
 
   pub fn get_type(&self) -> Type {
     match self {
-      | Self::External { function_type, .. } => function_type.clone(),
+      | Self::Intrinsic { function_type, .. } => function_type.clone(),
       | Self::Definition { function_type, .. } => function_type.clone(),
     }
   }
@@ -453,13 +457,13 @@ impl PartialEq for Function {
   }
 }
 
-pub struct ExternalFunction {
+pub struct IntrinsicFunction {
   pub name: String,
-  pub function: BuiltinFunction,
+  pub function: IntrinsicFn,
 }
 
-impl Debug for ExternalFunction {
+impl Debug for IntrinsicFunction {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-    write!(f, "<external function '{}'>", self.name)
+    write!(f, "<intrinsic function '{}'>", self.name)
   }
 }
