@@ -175,16 +175,6 @@ impl ModuleLoader {
   }
 }
 
-pub fn declaration_name(typed_statement: &TypedStatement) -> &str {
-  match typed_statement {
-    | TypedStatement::Alias(alias, ..) => &alias.name,
-    | TypedStatement::Adt(name, ..) => name,
-    | TypedStatement::Definition(name, ..) => name,
-    | TypedStatement::Infix(name, ..) => name,
-    | TypedStatement::Port(name, ..) => name,
-  }
-}
-
 fn get_module_dependencies(module: &Module) -> Vec<String> {
   module
     .imports

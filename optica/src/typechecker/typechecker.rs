@@ -9,7 +9,7 @@ use crate::ast::traverser;
 use crate::ast::typed::*;
 use crate::ast::untyped::*;
 use crate::errors::*;
-use crate::loader::{self, *};
+use crate::loader::*;
 use crate::source::{SourceCode, Span};
 use crate::utils::path;
 use crate::utils::vec::{self, VecExt};
@@ -505,9 +505,9 @@ impl Typechecker {
     result: &mut Vec<ImportedModule>,
   ) {
     let aliased_name = if alias.is_empty() {
-      loader::declaration_name(declaration).to_string()
+      declaration.get_name().to_string()
     } else {
-      format!("{}.{}", alias, loader::declaration_name(declaration))
+      format!("{}.{}", alias, declaration.get_name())
     };
 
     match declaration {
