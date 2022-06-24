@@ -19,7 +19,7 @@ pub fn create_intrinsic(
   let function_type = signature.parse::<Type>()?;
 
   let function = Value::Function {
-    arity: function::arguments_count(&function_type),
+    arity: function::arity(&function_type),
     args: vec![],
     function: Arc::new(Function::Intrinsic {
       id: types::function_id(),
