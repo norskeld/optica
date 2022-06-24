@@ -10,6 +10,7 @@ pub fn read(path: &str) -> Result<(), LangError> {
   let file_stem = Path::new(&file_name).file_stem().unwrap();
   let module = file_stem.to_string_lossy().to_string();
 
+  runtime.init()?;
   runtime.include_file(path)?;
   runtime.import_module(&module)?;
 

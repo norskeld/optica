@@ -2,10 +2,6 @@ use std::vec::IntoIter;
 
 use crate::ast::untyped::Type;
 
-pub fn type_unary_minus() -> Type {
-  Type::Function(Box::new(type_number()), Box::new(type_number()))
-}
-
 pub fn type_unit() -> Type {
   Type::Unit
 }

@@ -11,6 +11,8 @@ use crate::parser::Parser;
 use crate::runtime::Runtime;
 use crate::source::{SourceCode, SourceFile};
 
+const EXTENSION: &str = ".op";
+
 #[derive(Clone, Debug)]
 pub struct ModuleLoader;
 
@@ -25,7 +27,7 @@ pub struct LoadedModule {
 pub struct TypedModule {
   pub name: String,
   pub imports: Vec<ImportedModule>,
-  pub declarations: Vec<TypedStatement>,
+  pub statements: Vec<TypedStatement>,
   pub dependencies: Vec<String>,
 }
 
@@ -220,7 +222,7 @@ fn get_source_files(
     let file_name = entry.file_name().to_str().unwrap().to_string();
     let file_path = format!("{}/{}", path, file_name);
 
-    if file_type.is_file() && file_name.ends_with(".cord") {
+    if file_type.is_file() && file_name.ends_with(EXTENSION) {
       destination.push(get_source_file(inner_path, &file_path)?);
     } else if file_type.is_dir() {
       let inner: String = if inner_path.is_empty() {
@@ -255,7 +257,7 @@ fn get_source_file(inner_path: &str, absolute_path: &str) -> Result<SourceFile, 
   })?;
 
   let loaded_module = SourceFile {
-    name: module_name.trim_end_matches(".cord").to_string(),
+    name: module_name.trim_end_matches(EXTENSION).to_string(),
     path: absolute_path.to_string(),
     source: SourceCode::from_bytes(file_contents, absolute_path),
   };
