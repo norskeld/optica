@@ -23,6 +23,7 @@ pub enum LoaderError {
   NotLoadedModule {
     module: String,
   },
+  PathNormalization(String),
 }
 
 impl Wrappable for LoaderError {
@@ -40,17 +41,17 @@ impl PartialEq for LoaderError {
       // std::io:Error cannot be compared, so we ignore this case.
       | LoaderError::IO { .. } => false,
       | LoaderError::MissingDependencies {
-        dependencies: this,
-        src: name0,
+        dependencies: this_deps,
+        src: this_src,
         ..
       } => {
         if let LoaderError::MissingDependencies {
-          dependencies: other,
-          src: name1,
+          dependencies: other_deps,
+          src: other_src,
           ..
         } = other
         {
-          this == other && name0 == name1
+          this_deps == other_deps && this_src == other_src
         } else {
           false
         }
@@ -71,6 +72,13 @@ impl PartialEq for LoaderError {
       },
       | LoaderError::NotLoadedModule { module: this, .. } => {
         if let LoaderError::NotLoadedModule { module: other } = other {
+          this == other
+        } else {
+          false
+        }
+      },
+      | LoaderError::PathNormalization(this) => {
+        if let LoaderError::PathNormalization(other) = other {
           this == other
         } else {
           false
