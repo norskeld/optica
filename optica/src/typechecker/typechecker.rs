@@ -180,7 +180,7 @@ impl Typechecker {
       }
     }
 
-    let declarations = self
+    let statements = self
       .typecheck_module_statements(&module.ast.statements)
       .map_err(|errors| {
         if errors.len() == 1 {
@@ -193,7 +193,7 @@ impl Typechecker {
     Ok(TypedModule {
       name: module.src.name.to_string(),
       dependencies: module.dependencies.clone(),
-      statements: declarations,
+      statements,
       imports,
     })
   }
@@ -264,7 +264,7 @@ impl Typechecker {
       .collect::<Vec<_>>();
 
     let adt_type = Type::Tag(name.to_string(), type_variables);
-    let mut declarations = vec![];
+    let mut statements = vec![];
 
     // Any error inside the block should be returned after `exit_block()`. We cannot use
     // `self.context.block()`, because we call `self.check_type()`, it needs an immutable reference
@@ -315,7 +315,7 @@ impl Typechecker {
         adt_type.clone()
       };
 
-      declarations.push(TypedStatement::Port(variant.name.clone(), variant_type));
+      statements.push(TypedStatement::Port(variant.name.clone(), variant_type));
     }
 
     let adt = Arc::new(Adt {
@@ -324,9 +324,9 @@ impl Typechecker {
       variants: adt_variants.map(|(_, variant)| variant.clone()),
     });
 
-    declarations.push(TypedStatement::Adt(name.to_string(), adt));
+    statements.push(TypedStatement::Adt(name.to_string(), adt));
 
-    Ok(declarations)
+    Ok(statements)
   }
 
   pub fn typecheck_port(
@@ -520,6 +520,8 @@ impl Typechecker {
     statements: &[Statement],
   ) -> Result<Vec<TypedStatement>, Vec<LangError>> {
     let mut statements = statements.iter().collect::<Vec<_>>();
+    let mut module_typed_statements = vec![];
+    let mut errors = vec![];
 
     // Sort by type.
     statements.sort_by_key(|stmt| {
@@ -532,9 +534,6 @@ impl Typechecker {
       }
     });
 
-    let mut declarations = vec![];
-    let mut errors = vec![];
-
     for statement in statements {
       let typed_statements = match self.typecheck_statement(statement) {
         | Ok(statements) => statements,
@@ -545,7 +544,7 @@ impl Typechecker {
       };
 
       for typed_statement in typed_statements.into_iter() {
-        declarations.push(typed_statement.clone());
+        module_typed_statements.push(typed_statement.clone());
 
         match typed_statement {
           | TypedStatement::Definition(name, def) => {
@@ -568,29 +567,29 @@ impl Typechecker {
     }
 
     // Replace infix definitions with copies of the referenced function.
-    for declaration in declarations.clone() {
-      if let TypedStatement::Infix(name, infix_def, _) = declaration {
-        let mut next_declarations = vec![];
+    for typed_statement in module_typed_statements.clone() {
+      if let TypedStatement::Infix(name, infix_def, _) = typed_statement {
+        let mut next_statements = vec![];
 
-        for declaration in &declarations {
-          if let TypedStatement::Definition(definition_name, definition) = declaration {
+        for typed_statement in &module_typed_statements {
+          if let TypedStatement::Definition(definition_name, definition) = typed_statement {
             if definition_name == &infix_def {
               let mut definition = definition.clone();
 
               definition.name = name.to_string();
-              next_declarations.push(TypedStatement::Definition(name.to_string(), definition));
+              next_statements.push(TypedStatement::Definition(name.to_string(), definition));
 
               break;
             }
           }
         }
 
-        declarations.extend(next_declarations);
+        module_typed_statements.extend(next_statements);
       }
     }
 
     if errors.is_empty() {
-      Ok(declarations)
+      Ok(module_typed_statements)
     } else {
       Err(errors)
     }
@@ -723,8 +722,8 @@ impl Typechecker {
     module: &TypedModule,
     result: &mut Vec<ImportedModule>,
   ) {
-    for declaration in &module.statements {
-      self.import_declaration(declaration, module_name, alias, result);
+    for statement in &module.statements {
+      self.import_statement(statement, module_name, alias, result);
     }
   }
 
@@ -735,34 +734,34 @@ impl Typechecker {
     exports: &ModuleExports,
     result: &mut Vec<ImportedModule>,
   ) -> Result<(), LangError> {
-    let declarations = match exports {
+    let statements = match exports {
       | ModuleExports::Just(exp) => {
         Self::get_exported_statements(&module.statements, exp).map_err(Wrappable::wrap)?
       },
       | ModuleExports::All => module.statements.clone(),
     };
 
-    for declaration in &declarations {
-      self.import_declaration(declaration, module_name, "", result);
+    for statement in &statements {
+      self.import_statement(statement, module_name, "", result);
     }
 
     Ok(())
   }
 
-  fn import_declaration(
+  fn import_statement(
     &mut self,
-    declaration: &TypedStatement,
+    statements: &TypedStatement,
     module_name: &str,
     alias: &str,
     result: &mut Vec<ImportedModule>,
   ) {
     let aliased_name = if alias.is_empty() {
-      declaration.get_name().to_string()
+      statements.get_name().to_string()
     } else {
-      format!("{}.{}", alias, declaration.get_name())
+      format!("{}.{}", alias, statements.get_name())
     };
 
-    match declaration {
+    match statements {
       | TypedStatement::Port(name, ty) => {
         result.push(ImportedModule {
           source: module_name.to_string(),
