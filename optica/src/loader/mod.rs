@@ -11,7 +11,7 @@ use crate::parser::Parser;
 use crate::runtime::Runtime;
 use crate::source::{SourceCode, SourceFile};
 
-const EXTENSION: &str = ".op";
+pub const EXTENSION: &str = ".op";
 
 #[derive(Clone, Debug)]
 pub struct ModuleLoader;
