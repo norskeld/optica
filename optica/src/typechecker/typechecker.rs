@@ -7,6 +7,7 @@ use super::Context;
 use crate::ast::typed::*;
 use crate::ast::untyped::*;
 use crate::errors::*;
+use crate::intrinsics;
 use crate::loader::*;
 use crate::source::{SourceCode, Span};
 use crate::types;
@@ -142,7 +143,18 @@ impl Typechecker {
     modules: &HashMap<String, TypedModule>,
     module: &LoadedModule,
   ) -> Result<TypedModule, LangError> {
-    let imports = self.typecheck_module_imports(modules, &module.ast.imports)?;
+    let imports = {
+      let mut imports = vec![];
+      let intrinsic_imports = intrinsics::modules()?
+        .into_iter()
+        .map(|(.., imports)| imports)
+        .collect::<Vec<_>>();
+
+      imports.extend(self.typecheck_module_imports(modules, &intrinsic_imports)?);
+      imports.extend(self.typecheck_module_imports(modules, &module.ast.imports)?);
+
+      imports
+    };
 
     // Avoid problems with statement order.
     for statement in &module.ast.statements {
@@ -181,7 +193,7 @@ impl Typechecker {
     Ok(TypedModule {
       name: module.src.name.to_string(),
       dependencies: module.dependencies.clone(),
-      declarations,
+      statements: declarations,
       imports,
     })
   }
@@ -448,13 +460,7 @@ impl Typechecker {
     modules: &HashMap<String, TypedModule>,
     imports: &[ModuleImport],
   ) -> Result<Vec<ImportedModule>, LangError> {
-    let mut module_imports = vec![ImportedModule {
-      source: "Cord.Kernel.Basics".to_string(),
-      source_name: "__internal__minus".to_string(),
-      destination_name: "__internal__minus".to_string(),
-    }];
-
-    self.add_port("__internal__minus", types::type_unary_minus());
+    let mut module_imports = vec![];
 
     // Add rest of imports.
     for import in imports {
@@ -464,97 +470,14 @@ impl Typechecker {
     Ok(module_imports)
   }
 
-  fn import_qualified(
-    &mut self,
-    module_name: &str,
-    alias: &str,
-    module: &TypedModule,
-    result: &mut Vec<ImportedModule>,
-  ) {
-    for declaration in &module.declarations {
-      self.import_declaration(declaration, module_name, alias, result);
-    }
-  }
-
-  fn import_exports(
-    &mut self,
-    module_name: &str,
-    module: &TypedModule,
-    exports: &ModuleExports,
-    result: &mut Vec<ImportedModule>,
-  ) -> Result<(), LangError> {
-    let declarations = match exports {
-      | ModuleExports::Just(exp) => {
-        Self::get_exported_statements(&module.declarations, exp).map_err(Wrappable::wrap)?
-      },
-      | ModuleExports::All => module.declarations.clone(),
-    };
-
-    for declaration in &declarations {
-      self.import_declaration(declaration, module_name, "", result);
-    }
-
-    Ok(())
-  }
-
-  fn import_declaration(
-    &mut self,
-    declaration: &TypedStatement,
-    module_name: &str,
-    alias: &str,
-    result: &mut Vec<ImportedModule>,
-  ) {
-    let aliased_name = if alias.is_empty() {
-      declaration.get_name().to_string()
-    } else {
-      format!("{}.{}", alias, declaration.get_name())
-    };
-
-    match declaration {
-      | TypedStatement::Port(name, ty) => {
-        result.push(ImportedModule {
-          source: module_name.to_string(),
-          source_name: name.clone(),
-          destination_name: aliased_name.clone(),
-        });
-
-        self.add_port(&aliased_name, ty.clone());
-      },
-      | TypedStatement::Definition(name, def) => {
-        result.push(ImportedModule {
-          source: module_name.to_string(),
-          source_name: name.clone(),
-          destination_name: aliased_name.clone(),
-        });
-
-        self.add_port(&aliased_name, def.header.clone());
-      },
-      | TypedStatement::Alias(alias) => {
-        self.add_type_alias(alias.clone());
-      },
-      | TypedStatement::Adt(name, _) => {
-        self.add_canonical_type_name(&aliased_name, name);
-        self.add_canonical_type_name(name, name);
-      },
-      | TypedStatement::Infix(name, _, ty) => {
-        result.push(ImportedModule {
-          source: module_name.to_string(),
-          source_name: name.clone(),
-          destination_name: name.clone(),
-        });
-
-        self.add_port(name, ty.clone());
-      },
-    }
-  }
-
-  fn typecheck_import(
+  pub fn typecheck_import(
     &mut self,
     modules: &HashMap<String, TypedModule>,
     module_imports: &mut Vec<ImportedModule>,
     import: &ModuleImport,
   ) -> Result<(), LangError> {
     let module_name = import.path.join(".");
+    let alias = import.alias.as_ref().unwrap_or(&module_name);
 
     let module = modules.get(&module_name).ok_or_else(|| {
       LoaderError::MissingModule {
@@ -563,12 +486,30 @@ impl Typechecker {
       .wrap()
     })?;
 
-    let alias = import.alias.as_ref().unwrap_or(&module_name);
+    self.import_qualified(&module_name, alias, module, module_imports);
+
+    if let Some(exports) = &import.exports {
+      self.import_exports(&module_name, module, exports, module_imports)?;
+    }
+
+    Ok(())
+  }
+
+  pub fn typecheck_intrinsic_import(
+    &mut self,
+    module: &TypedModule,
+    module_imports: &mut Vec<ImportedModule>,
+    module_import: &ModuleImport,
+  ) -> Result<(), LangError> {
+    let module_name = module_import.path.join(".");
+
+    // Just in case.
+    let alias = module_import.alias.as_ref().unwrap_or(&module_name);
 
     self.import_qualified(&module_name, alias, module, module_imports);
 
-    if let Some(exposing) = &import.exports {
-      self.import_exports(&module_name, module, exposing, module_imports)?;
+    if let Some(exports) = &module_import.exports {
+      self.import_exports(&module_name, module, exports, module_imports)?;
     }
 
     Ok(())
@@ -773,6 +714,90 @@ impl Typechecker {
     }
 
     Ok(exported_statements)
+  }
+
+  fn import_qualified(
+    &mut self,
+    module_name: &str,
+    alias: &str,
+    module: &TypedModule,
+    result: &mut Vec<ImportedModule>,
+  ) {
+    for declaration in &module.statements {
+      self.import_declaration(declaration, module_name, alias, result);
+    }
+  }
+
+  fn import_exports(
+    &mut self,
+    module_name: &str,
+    module: &TypedModule,
+    exports: &ModuleExports,
+    result: &mut Vec<ImportedModule>,
+  ) -> Result<(), LangError> {
+    let declarations = match exports {
+      | ModuleExports::Just(exp) => {
+        Self::get_exported_statements(&module.statements, exp).map_err(Wrappable::wrap)?
+      },
+      | ModuleExports::All => module.statements.clone(),
+    };
+
+    for declaration in &declarations {
+      self.import_declaration(declaration, module_name, "", result);
+    }
+
+    Ok(())
+  }
+
+  fn import_declaration(
+    &mut self,
+    declaration: &TypedStatement,
+    module_name: &str,
+    alias: &str,
+    result: &mut Vec<ImportedModule>,
+  ) {
+    let aliased_name = if alias.is_empty() {
+      declaration.get_name().to_string()
+    } else {
+      format!("{}.{}", alias, declaration.get_name())
+    };
+
+    match declaration {
+      | TypedStatement::Port(name, ty) => {
+        result.push(ImportedModule {
+          source: module_name.to_string(),
+          source_name: name.clone(),
+          destination_name: aliased_name.clone(),
+        });
+
+        self.add_port(&aliased_name, ty.clone());
+      },
+      | TypedStatement::Definition(name, def) => {
+        result.push(ImportedModule {
+          source: module_name.to_string(),
+          source_name: name.clone(),
+          destination_name: aliased_name.clone(),
+        });
+
+        self.add_port(&aliased_name, def.header.clone());
+      },
+      | TypedStatement::Alias(alias) => {
+        self.add_type_alias(alias.clone());
+      },
+      | TypedStatement::Adt(name, _) => {
+        self.add_canonical_type_name(&aliased_name, name);
+        self.add_canonical_type_name(name, name);
+      },
+      | TypedStatement::Infix(name, _, ty) => {
+        result.push(ImportedModule {
+          source: module_name.to_string(),
+          source_name: name.clone(),
+          destination_name: name.clone(),
+        });
+
+        self.add_port(name, ty.clone());
+      },
+    }
   }
 
   fn get_function_return_type(ty: &Type) -> Type {

@@ -236,7 +236,7 @@ impl Interpreter {
       self.stack.add(&import.destination_name, value.clone());
     }
 
-    for declaration in &module.declarations {
+    for declaration in &module.statements {
       match declaration {
         | TypedStatement::Definition(_, def) => {
           let (name, value) = self.eval_definition(def);
@@ -261,7 +261,7 @@ impl Interpreter {
 
   fn eval_adt_variant(&mut self, adt: Arc<Adt>, variant: &AdtVariant) -> (String, Value) {
     let name = variant.name.clone();
-    let value = intrinsics::adt::adt_constructor(adt, variant);
+    let value = intrinsics::helpers::create_adt(adt, variant);
 
     self.stack.add(&name, value.clone());
 

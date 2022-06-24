@@ -1,0 +1,3 @@
+module Basic where
+
+main = 40 + 2
