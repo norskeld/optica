@@ -1,3 +1,9 @@
 module Basic where
 
-main = 40 + 2
+-- Meaning of life!
+life = 42
+
+-- Blaze it!
+blaze = 42 * 10
+
+main = blaze // life
