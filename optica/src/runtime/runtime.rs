@@ -31,13 +31,7 @@ impl Runtime {
   }
 
   pub fn init(&mut self) -> Result<(), LangError> {
-    let mut imports = vec![];
-
-    for (ref module_name, typed_module, runtime_module, module_import) in intrinsics::modules()? {
-      self
-        .typechecker
-        .typecheck_intrinsic_import(&typed_module, &mut imports, &module_import)?;
-
+    for (ref module_name, typed_module, runtime_module, _) in intrinsics::modules()? {
       self
         .typed_modules
         .insert(module_name.to_string(), typed_module);
@@ -45,25 +39,6 @@ impl Runtime {
       self
         .runtime_modules
         .insert(module_name.to_string(), runtime_module);
-    }
-
-    for import in &imports {
-      let module = self.runtime_modules.get(&import.source).ok_or_else(|| {
-        LoaderError::MissingModule {
-          module: import.source.clone(),
-        }
-        .wrap()
-      })?;
-
-      let value = module
-        .definitions
-        .get(&import.source_name)
-        .ok_or_else(|| InterpreterError::MissingDefinition(import.source.clone()).wrap())?;
-
-      self
-        .interpreter
-        .stack
-        .add(&import.destination_name, value.clone());
     }
 
     Ok(())

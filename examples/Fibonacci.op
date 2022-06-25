@@ -1,0 +1,12 @@
+module Fibonacci where
+
+fibonacci n =
+  let
+    fibonacci' n' a b =
+      match n' with
+        | 0 => a
+        | _ => fibonacci' (n' - 1) b (a + b)
+  in
+    fibonacci' n 0 1
+
+main = fibonacci 69

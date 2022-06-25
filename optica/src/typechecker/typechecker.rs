@@ -145,6 +145,7 @@ impl Typechecker {
   ) -> Result<TypedModule, LangError> {
     let imports = {
       let mut imports = vec![];
+
       let intrinsic_imports = intrinsics::modules()?
         .into_iter()
         .map(|(.., imports)| imports)
@@ -169,10 +170,9 @@ impl Typechecker {
         let ty = if let Some(ty) = self.context.get(definition_ref) {
           ty.clone()
         } else {
-          // TODO: Is it?
+          // TODO: Use proper error handling instead.
           unreachable!(
-            "Infix operator {} where the function {} doesn't have a type header",
-            name, definition_ref
+            "Infix operator {name} where the function {definition_ref} doesn't have a type header"
           );
         };
 
