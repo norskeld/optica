@@ -86,13 +86,7 @@ impl Interpreter {
       },
       | TypedExpression::If(_, _, cond, then_, else_) => {
         let cond = self.eval_expression(cond)?;
-
-        // TODO: This should be investigated.
-        let value = if let Value::Function { args, function, .. } = &cond {
-          self.exec_function(function, args.to_vec())?
-        } else {
-          cond
-        };
+        let value = self.eval_eagerly(&cond)?;
 
         // TODO: Make `Bool` internal type and value.
         match &value {
@@ -109,17 +103,18 @@ impl Interpreter {
         }
       },
       | TypedExpression::Match(_, _, cond, branches) => {
-        let cond_val = self.eval_expression(cond)?;
+        let cond = self.eval_expression(cond)?;
+        let value = self.eval_eagerly(&cond)?;
 
         for (pattern, expression) in branches {
-          if matches_pattern(pattern, &cond_val) {
+          if matches_pattern(pattern, &value) {
             return self.eval_expression(expression);
           }
         }
 
         Err(
           InterpreterError::CaseExpressionNonExhaustive(
-            cond_val,
+            value,
             branches
               .iter()
               .map(|(pattern, _)| pattern.clone())
@@ -158,6 +153,13 @@ impl Interpreter {
 
         self.eval_expression(let_body)
       },
+    }
+  }
+
+  pub fn eval_eagerly(&mut self, value: &Value) -> Result<Value, LangError> {
+    match value {
+      | Value::Function { args, function, .. } => self.exec_function(function, args.to_vec()),
+      | _ => Ok(value.clone()),
     }
   }
 
@@ -236,8 +238,8 @@ impl Interpreter {
       self.stack.add(&import.destination_name, value.clone());
     }
 
-    for declaration in &module.statements {
-      match declaration {
+    for statement in &module.statements {
+      match statement {
         | TypedStatement::Definition(_, def) => {
           let (name, value) = self.eval_definition(def);
           definitions.insert(name, value);

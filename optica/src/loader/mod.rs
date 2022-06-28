@@ -225,7 +225,7 @@ fn get_source_files(
     if file_type.is_file() && file_name.ends_with(EXTENSION) {
       destination.push(get_source_file(inner_path, &file_path)?);
     } else if file_type.is_dir() {
-      let inner: String = if inner_path.is_empty() {
+      let inner = if inner_path.is_empty() {
         file_name
       } else {
         format!("{}.{}", inner_path, file_name)
