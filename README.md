@@ -7,7 +7,7 @@ Minimal, interpreted, statically typed functional programming language.
 
 ## Status & Purpose
 
-> WIP.
+> MVP.
 
 I have no real aspirations for the language as this is primarily a personal hobby project for learning Rust and language design.
 
@@ -19,7 +19,11 @@ Core language stuff:
 - [x] Hindley–Milner type inference.
 - [x] Type aliases and ADTs.
 - [ ] Records (using [this paper by Daan Leijen][records-paper] as a reference).
-- [x] Pattern matching.
+- [ ] Pattern matching, currently works with:
+  - [x] Literals.
+  - [x] Tuples and lists.
+  - [x] Non-parameterized ADTs.
+  - [ ] Parameterized ADTs.
 - [x] Module system.
 - [ ] Standard library (Prelude).
 - [ ] Diagnostic reporting via [codespan] or [ariadne].
@@ -38,7 +42,8 @@ These are not as important the ones above, I will do research first and implemen
 - [ ] Effect system.
 - [ ] REPL with autocomplete and syntax highlighting.
 - [ ] VM with garbage collection.
-- [ ] Language Server Protocol (LSP).
+- [ ] LSP-server.
+- [ ] VS Code extension.
 - [ ] Infrastructure: package management, tests.
 - [ ] Interop with Rust.
 
