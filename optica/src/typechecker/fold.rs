@@ -7,14 +7,14 @@ pub enum ExpressionTree {
   Branch(String, Box<Self>, Box<Self>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExpressionTreeError {
   InvalidInput,
   AssociativityError,
   InternalError(String),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Associativity {
   Left,
   Right,

@@ -112,7 +112,7 @@ impl Typechecker {
     stmt: &Statement,
   ) -> Result<Vec<TypedStatement>, LangError> {
     let statements = match stmt {
-      | Statement::Alias(name, vars, ty) => self.typecheck_alias(name, vars, ty)?,
+      | Statement::Alias(span, name, vars, ty) => self.typecheck_alias(span, name, vars, ty)?,
       | Statement::Adt(name, vars, variants) => self.typecheck_adt(name, vars, variants)?,
       | Statement::Function(definition) => self.typecheck_definition(definition)?,
       | Statement::Port(span, name, ty) => self.typecheck_port(*span, name, ty)?,
@@ -200,6 +200,7 @@ impl Typechecker {
 
   pub fn typecheck_alias(
     &mut self,
+    span: &Span,
     name: &str,
     variables: &[String],
     ty: &Type,
@@ -222,6 +223,7 @@ impl Typechecker {
       return Err(LangError::Typechecker(
         self.source.clone(),
         TypeError::UnusedTypeVariables {
+          span: *span,
           name: name.to_string(),
           values: unused_vars,
         },
@@ -237,6 +239,7 @@ impl Typechecker {
       return Err(LangError::Typechecker(
         self.source.clone(),
         TypeError::UndeclaredTypeVariables {
+          span: *span,
           name: name.to_string(),
           values: unknown_vars,
         },
@@ -652,7 +655,7 @@ impl Typechecker {
             })
             .cloned()
             .ok_or_else(|| {
-              InterpreterError::MissingExposing(name.clone(), typed_statements.to_owned())
+              InterpreterError::MissingExport(name.clone(), typed_statements.to_owned())
             })?;
 
           exported_statements.push(next_statement);
@@ -671,7 +674,7 @@ impl Typechecker {
             })
             .cloned()
             .ok_or_else(|| {
-              InterpreterError::MissingExposing(name.clone(), typed_statements.to_owned())
+              InterpreterError::MissingExport(name.clone(), typed_statements.to_owned())
             })?;
 
           exported_statements.push(next_statement);
@@ -704,7 +707,7 @@ impl Typechecker {
             })
             .cloned()
             .ok_or_else(|| {
-              InterpreterError::MissingExposing(name.clone(), typed_statements.to_owned())
+              InterpreterError::MissingExport(name.clone(), typed_statements.to_owned())
             })?;
 
           exported_statements.push(next_statement);
@@ -801,7 +804,7 @@ impl Typechecker {
 
   fn get_function_return_type(ty: &Type) -> Type {
     if let Type::Function(_, rest) = ty {
-      Self::get_function_return_type(&*rest)
+      Self::get_function_return_type(rest)
     } else {
       ty.clone()
     }

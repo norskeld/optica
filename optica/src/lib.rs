@@ -1,4 +1,5 @@
 #![allow(clippy::module_inception)]
+#![feature(iter_intersperse)]
 
 pub(crate) mod ast;
 pub mod cli;

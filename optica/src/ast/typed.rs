@@ -402,7 +402,7 @@ impl From<Literal> for Value {
 }
 
 /// Represents an ADT type with all the information about the variants.
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Adt {
   pub name: String,
   pub types: Vec<String>,
@@ -410,7 +410,7 @@ pub struct Adt {
 }
 
 /// Is a variant in an ADT.
-#[derive(Clone, Debug, Hash, PartialEq)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct AdtVariant {
   pub name: String,
   pub types: Vec<Type>,

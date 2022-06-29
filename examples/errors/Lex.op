@@ -1,0 +1,9 @@
+data Int = Int
+data Float = Float
+
+test : Int -> Int -> String
+test n1 n2 = match n1 + n2 with
+  | 420 => "blazing"
+  | _ => "chilling"
+
+main = test 1000124 "20"

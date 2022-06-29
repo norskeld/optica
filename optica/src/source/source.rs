@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::str::Chars;
 use std::sync::Arc;
 
@@ -8,11 +9,11 @@ pub const PADDING: usize = 2;
 pub type Span = (u32, u32);
 
 /// Source code container to avoid large files duplication.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SourceCode(Arc<SourceContainer>);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceCode(pub Arc<SourceContainer>);
 
 /// Source file container.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SourceFile {
   pub name: String,
   pub path: String,
@@ -20,12 +21,12 @@ pub struct SourceFile {
 }
 
 /// Internal source code container, used for ergonomics.
-#[derive(Clone, Debug, PartialEq)]
-struct SourceContainer {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceContainer {
   /// File path or 'inline'.
-  source: String,
+  pub source: String,
   /// Source code.
-  code: String,
+  pub code: String,
 }
 
 impl SourceCode {
@@ -87,5 +88,20 @@ impl SourceCode {
   /// Returns a string slice of the `code`.
   pub fn as_str(&self) -> &str {
     self.0.code.as_str()
+  }
+
+  /// Returns the file name of source.
+  pub fn file_name(&self) -> &str {
+    let path = self.0.source.as_str();
+
+    Path::new(path)
+      .file_name()
+      .and_then(|filename| filename.to_str())
+      .unwrap_or(path)
+  }
+
+  /// Returns the file path of source.
+  pub fn file_path(&self) -> &str {
+    self.0.source.as_str()
   }
 }

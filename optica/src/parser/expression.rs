@@ -4,7 +4,7 @@ use super::statement;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::lexer::Token;
-use crate::source::Input;
+use crate::source::{Input, Span};
 use crate::utils;
 
 pub fn parse_expr(input: Input) -> Result<(Expression, Input), ParseError> {
@@ -14,17 +14,29 @@ pub fn parse_expr(input: Input) -> Result<(Expression, Input), ParseError> {
   Ok((create_binary_operator_chain(first, rest), input))
 }
 
+fn check_swap_span(span: Span) -> Span {
+  match span {
+    | (l, r) if l > r => (r, l),
+    | _ => span,
+  }
+}
+
 fn parse_expr_application(input: Input) -> Result<(Expression, Input), ParseError> {
   let (exprs, input) = combinators::many1(&parse_expr_base, input)?;
-  let start = input.pos();
-  let end = input.pos_end();
+  let span_start = input.pos();
+  // let span_start = input.pos();
 
   let mut iter = exprs.into_iter();
   let first = iter.next().unwrap();
 
-  let tree = iter.fold(first, |acc, b| {
-    Expression::Application((start, end), Box::new(acc), Box::new(b))
+  let tree = iter.fold(first, |acc, next| {
+    let (_, span_end) = next.get_span();
+    let span = check_swap_span((span_start, span_end));
+
+    Expression::Application(span, Box::new(acc), Box::new(next))
   });
+
+  dbg!(&tree);
 
   Ok((tree, input))
 }
@@ -57,6 +69,7 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
     },
     | Token::Ident(name) => (Expression::Ref(input.span(), name), input.next()),
     | Token::UpperIdent(first) => {
+      let span_start = input.pos();
       let next_input = input.next();
 
       match next_input.read() {
@@ -71,7 +84,7 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
           // Parsed: Upper.A.B.C.func
           (
             Expression::QualifiedRef(
-              (input.pos(), input.pos()),
+              (span_start, input.pos()),
               utils::vec::cons(first, rest),
               name,
             ),
@@ -80,13 +93,14 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
         },
         | _ => {
           (
-            Expression::Ref((input.pos(), next_input.pos()), first),
+            Expression::Ref((span_start, next_input.pos()), first),
             input.next(),
           )
         },
       }
     },
     | Token::IfKw => {
+      let span_start = input.pos();
       let (condition, input) = parse_expr(input.next())?;
 
       let input = combinators::expect(Token::ThenKw, input)?;
@@ -97,7 +111,7 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
 
       (
         Expression::If(
-          (input.pos(), input.pos()),
+          (span_start, input.pos()),
           Box::from(condition),
           Box::from(true_branch),
           Box::from(false_branch),
@@ -111,18 +125,19 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
     // (1) => Literal
     // (1, 2) => Tuple
     | Token::LeftParen => {
+      let span_start = input.pos();
       let input = input.next();
 
       match input.read() {
         // ()
         | Token::RightParen => {
           let input = input.next();
-          (Expression::Unit((input.pos(), input.pos())), input)
+          (Expression::Unit((span_start, input.pos())), input)
         },
         // (+)
         | Token::BinaryOperator(op) => {
           let input = combinators::expect(Token::RightParen, input.next())?;
-          (Expression::Ref((input.pos(), input.pos()), op), input)
+          (Expression::Ref((span_start, input.pos()), op), input)
         },
         | _ => {
           let (value, input) = parse_expr(input)?;
@@ -138,7 +153,7 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
               let input = combinators::expect(Token::RightParen, input)?;
 
               (
-                Expression::Tuple((input.pos(), input.pos()), utils::vec::cons(value, rest)),
+                Expression::Tuple((span_start, input.pos()), utils::vec::cons(value, rest)),
                 input,
               )
             },
@@ -147,33 +162,37 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
       }
     },
     | Token::LeftBracket => {
-      let input = input.next();
+      let span_start = input.pos();
 
-      let (values, input) = combinators::comma0(&parse_expr, input)?;
+      let (values, input) = combinators::comma0(&parse_expr, input.next())?;
       let input = combinators::expect(Token::RightBracket, input)?;
 
-      (Expression::List((input.pos(), input.pos()), values), input)
+      (Expression::List((span_start, input.pos()), values), input)
     },
     | Token::BackSlash => {
+      let span_start = input.pos();
+
       let (patterns, input) = combinators::many1(&pattern::parse_pattern, input.next())?;
 
       let input = combinators::expect(Token::RightArrow, input)?;
       let (expr, input) = parse_expr(input)?;
 
       (
-        Expression::Lambda((input.pos(), input.pos()), patterns, Box::from(expr)),
+        Expression::Lambda((span_start, input.pos()), patterns, Box::from(expr)),
         input,
       )
     },
     | Token::PrefixMinus => {
+      let span_start = input.pos();
+
       let (expr, input) = parse_expr_base(input.next())?;
 
       (
         Expression::Application(
-          (input.pos(), input.pos()),
+          (span_start, input.pos()),
           Box::from(Expression::Ref(
             (input.pos(), input.pos() + 1),
-            String::from("__internal__minus"),
+            String::from("__minus"),
           )),
           Box::from(expr),
         ),
@@ -206,15 +225,20 @@ fn parse_expr_base(input: Input) -> Result<(Expression, Input), ParseError> {
       )
     },
     | Token::MatchKw => {
+      let span_start = input.pos();
+
       let (cond, input) = parse_expr(input.next())?;
+
       let input = combinators::expect(Token::WithKw, input)?;
       let level = combinators::read_indent(input.clone())?;
       let input = input.enter_level(level);
+
       let (branches, input) = combinators::many1(&|input| parse_match_branch(level, input), input)?;
+
       let input = input.exit_level(level);
 
       (
-        Expression::Match((input.pos(), input.pos()), Box::from(cond), branches),
+        Expression::Match((span_start, input.pos()), Box::from(cond), branches),
         input,
       )
     },

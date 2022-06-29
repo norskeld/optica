@@ -1,3 +1,4 @@
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
@@ -294,21 +295,21 @@ pub struct Module {
 }
 
 /// Module header with the module name and the list of exported definitions/types.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ModuleHeader {
   pub name: String,
   pub exports: ModuleExports,
 }
 
 /// Module exports. Either selected ones or all.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ModuleExports {
   Just(Vec<ModuleExport>),
   All,
 }
 
 /// Exported definition, type, or ADT.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ModuleExport {
   Adt(String, AdtExports),
   Type(String),
@@ -317,14 +318,14 @@ pub enum ModuleExport {
 }
 
 /// Exported variants of ADT. Either selected ones or all.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AdtExports {
   Just(Vec<String>),
   All,
 }
 
 /// A module import.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ModuleImport {
   pub path: Vec<String>,
   pub alias: Option<String>,
@@ -333,7 +334,7 @@ pub struct ModuleImport {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
-  Alias(String, Vec<String>, Type),
+  Alias(Span, String, Vec<String>, Type),
   Adt(String, Vec<String>, Vec<(Span, String, Vec<Type>)>),
   Function(Definition),
   Infix(InfixDirection, Int, String, String),
@@ -368,7 +369,7 @@ impl Statement {
   }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum InfixDirection {
   Left,
   Right,
@@ -395,7 +396,49 @@ impl FromStr for Type {
   }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+impl fmt::Display for Type {
+  fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      | Type::Var(value) => {
+        write!(formatter, "{}", value)?;
+      },
+      | Type::Tag(value, rest) => {
+        write!(formatter, "{}", value)?;
+
+        for value in rest {
+          write!(formatter, " {}", value)?;
+        }
+      },
+      | Type::Function(a, b) => {
+        if let Type::Function(..) = a.as_ref() {
+          write!(formatter, "({}) -> {}", a, b)?;
+        } else {
+          write!(formatter, "{} -> {}", a, b)?;
+        }
+      },
+      | Type::Unit => {
+        write!(formatter, "()")?;
+      },
+      | Type::Tuple(items) => {
+        write!(formatter, "(")?;
+
+        for (index, value) in items.iter().enumerate() {
+          write!(formatter, "{}", value)?;
+
+          if index != items.len() - 1 {
+            write!(formatter, ", ")?;
+          }
+        }
+
+        write!(formatter, ")")?;
+      },
+    }
+
+    Ok(())
+  }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeAlias {
   pub name: String,
   pub variables: Vec<String>,

@@ -295,7 +295,7 @@ impl Interpreter {
 
       if *arity < args_count {
         return Err(
-          InterpreterError::FunArgumentSizeMismatch(*arity, args_count, function.clone()).wrap(),
+          InterpreterError::FunctionArityMismatch(*arity, args_count, function.clone()).wrap(),
         );
       }
 
@@ -329,8 +329,7 @@ impl Interpreter {
       | Function::Intrinsic { function, .. } => {
         // TODO: This probably should not map to `InterpreterError::BuiltinFunctionError` and just
         // propagate produced error.
-        (function.function)(self, &arguments)
-          .map_err(|_| InterpreterError::BuiltinFunctionError.wrap())
+        (function.function)(self, &arguments).map_err(|_| InterpreterError::IntrinsicError.wrap())
       },
       | Function::Definition {
         patterns,
