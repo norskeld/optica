@@ -45,14 +45,14 @@ pub fn module() -> Result<IntrinsicModule, LangError> {
 fn addition(_: &mut Interpreter, args: &[Value]) -> Result<Value, LangError> {
   match args {
     | [lhs, rhs] => conversions::number_op(lhs, rhs, Add::add),
-    | _ => Err(InterpreterError::BuiltinFunctionError.wrap()),
+    | _ => Err(InterpreterError::IntrinsicError.wrap()),
   }
 }
 
 fn subtraction(_: &mut Interpreter, args: &[Value]) -> Result<Value, LangError> {
   match args {
     | [lhs, rhs] => conversions::number_op(lhs, rhs, Sub::sub),
-    | _ => Err(InterpreterError::BuiltinFunctionError.wrap()),
+    | _ => Err(InterpreterError::IntrinsicError.wrap()),
   }
 }
 
@@ -68,7 +68,7 @@ fn minus(_: &mut Interpreter, args: &[Value]) -> Result<Value, LangError> {
 fn multiplication(_: &mut Interpreter, args: &[Value]) -> Result<Value, LangError> {
   match args {
     | [lhs, rhs] => conversions::number_op(lhs, rhs, Mul::mul),
-    | _ => Err(InterpreterError::BuiltinFunctionError.wrap()),
+    | _ => Err(InterpreterError::IntrinsicError.wrap()),
   }
 }
 
@@ -79,7 +79,7 @@ fn fdivision(_: &mut Interpreter, args: &[Value]) -> Result<Value, LangError> {
         conversions::float_of(lhs)? / conversions::float_of(rhs)?,
       ))
     },
-    | _ => Err(InterpreterError::BuiltinFunctionError.wrap()),
+    | _ => Err(InterpreterError::IntrinsicError.wrap()),
   }
 }
 
@@ -95,14 +95,14 @@ fn idivision(_: &mut Interpreter, args: &[Value]) -> Result<Value, LangError> {
         Ok(Value::Int(a / b))
       }
     },
-    | _ => Err(InterpreterError::BuiltinFunctionError.wrap()),
+    | _ => Err(InterpreterError::IntrinsicError.wrap()),
   }
 }
 
 fn pow(_: &mut Interpreter, args: &[Value]) -> Result<Value, LangError> {
   match args {
     | [lhs, rhs] => conversions::number_op(lhs, rhs, |a, b| a.powf(b)),
-    | _ => Err(InterpreterError::BuiltinFunctionError.wrap()),
+    | _ => Err(InterpreterError::IntrinsicError.wrap()),
   }
 }
 

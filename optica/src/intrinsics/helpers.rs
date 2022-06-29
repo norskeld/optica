@@ -83,7 +83,7 @@ pub fn create_adt(adt: Arc<Adt>, variant: &AdtVariant) -> Value {
         let values = args.iter().skip(1).cloned().collect();
         Ok(Value::Adt(var.to_owned(), values, adt.clone()))
       } else {
-        Err(InterpreterError::InternalErrorAdtCreation(args[0].clone()).wrap())
+        Err(InterpreterError::IntrinsicAdtError(args[0].clone()).wrap())
       }
     },
   };

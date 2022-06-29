@@ -27,7 +27,7 @@ pub fn parse_statement(input: Input) -> Result<(Statement, Input), ParseError> {
       let input = combinators::expect(Token::Equals, input)?;
       let (ty, input) = types::parse_type(input)?;
 
-      (Statement::Alias(name, params, ty), input)
+      (Statement::Alias(input.span(), name, params, ty), input)
     },
     | Token::Ident(_) => {
       let (func, input) = parse_definition(0, input)?;
@@ -194,6 +194,7 @@ mod tests {
       parse_statement,
       "type Message = String",
       Statement::Alias(
+        (0, 0),
         "Message".to_string(),
         vec![],
         Type::Tag("String".to_string(), vec![]),
