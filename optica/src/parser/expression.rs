@@ -24,7 +24,6 @@ fn check_swap_span(span: Span) -> Span {
 fn parse_expr_application(input: Input) -> Result<(Expression, Input), ParseError> {
   let (exprs, input) = combinators::many1(&parse_expr_base, input)?;
   let span_start = input.pos();
-  // let span_start = input.pos();
 
   let mut iter = exprs.into_iter();
   let first = iter.next().unwrap();
@@ -35,8 +34,6 @@ fn parse_expr_application(input: Input) -> Result<(Expression, Input), ParseErro
 
     Expression::Application(span, Box::new(acc), Box::new(next))
   });
-
-  dbg!(&tree);
 
   Ok((tree, input))
 }
