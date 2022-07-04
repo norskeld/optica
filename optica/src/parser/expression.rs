@@ -4,7 +4,7 @@ use super::statement;
 use crate::ast::untyped::*;
 use crate::errors::*;
 use crate::lexer::Token;
-use crate::source::{Input, Span};
+use crate::source::Input;
 use crate::utils;
 
 pub fn parse_expr(input: Input) -> Result<(Expression, Input), ParseError> {
@@ -14,25 +14,16 @@ pub fn parse_expr(input: Input) -> Result<(Expression, Input), ParseError> {
   Ok((create_binary_operator_chain(first, rest), input))
 }
 
-fn check_swap_span(span: Span) -> Span {
-  match span {
-    | (l, r) if l > r => (r, l),
-    | _ => span,
-  }
-}
-
+/// TODO: Fix and improve spanning.
 fn parse_expr_application(input: Input) -> Result<(Expression, Input), ParseError> {
-  let (exprs, input) = combinators::many1(&parse_expr_base, input)?;
   let span_start = input.pos();
+  let (exprs, input) = combinators::many1(&parse_expr_base, input)?;
 
   let mut iter = exprs.into_iter();
   let first = iter.next().unwrap();
 
   let tree = iter.fold(first, |acc, next| {
-    let (_, span_end) = next.get_span();
-    let span = check_swap_span((span_start, span_end));
-
-    Expression::Application(span, Box::new(acc), Box::new(next))
+    Expression::Application((span_start, input.pos_end()), Box::new(acc), Box::new(next))
   });
 
   Ok((tree, input))
