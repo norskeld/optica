@@ -63,7 +63,7 @@ impl Input {
   }
 
   pub fn enter_level(&self, level: u32) -> Input {
-    let mut copy = (&(*self.levels)).clone();
+    let mut copy = (*self.levels).clone();
     copy.push(level);
 
     Input {
@@ -74,7 +74,7 @@ impl Input {
   }
 
   pub fn exit_level(&self, level: u32) -> Input {
-    let mut copy = (&(*self.levels)).clone();
+    let mut copy = (*self.levels).clone();
 
     if let Some(index) = copy.iter().position(|lv| *lv == level) {
       copy.remove(index);
