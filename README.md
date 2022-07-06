@@ -1,7 +1,6 @@
 # Optica
 
-[![Checks](https://img.shields.io/github/workflow/status/norskeld/optica/check?style=flat-square&colorA=22272d&colorB=22272d&label=fmt%20%2B%20clippy)](https://github.com/norskeld/optica/actions/workflows/check.yml)
-[![Tests](https://img.shields.io/github/workflow/status/norskeld/optica/test?style=flat-square&colorA=22272d&colorB=22272d&label=tests)](https://github.com/norskeld/optica/actions/workflows/test.yml)
+[![Tests](https://img.shields.io/github/workflow/status/norskeld/optica/checks?style=flat-square&colorA=22272d&colorB=22272d&label=checks)](https://github.com/norskeld/optica/actions/workflows/test.yml)
 
 Minimal, interpreted, statically typed functional programming language.
 
