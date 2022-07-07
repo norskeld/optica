@@ -194,7 +194,7 @@ mod tests {
       parse_statement,
       "type Message = String",
       Statement::Alias(
-        (0, 0),
+        (21, 21),
         "Message".to_string(),
         vec![],
         Type::Tag("String".to_string(), vec![]),

@@ -572,7 +572,7 @@ mod tests {
       "-(40+2)",
       Expression::Application(
         (0, 0),
-        Box::from(Expression::Ref((0, 0), "__internal__minus".to_string())),
+        Box::from(Expression::Ref((0, 0), "__minus".to_string())),
         Box::from(Expression::OperatorChain(
           (0, 0),
           vec![
@@ -611,7 +611,7 @@ mod tests {
         Box::new(Expression::Literal((0, 0), Literal::Int(42))),
         Box::new(Expression::Application(
           (0, 0),
-          Box::new(Expression::Ref((0, 0), "__internal__minus".to_string())),
+          Box::new(Expression::Ref((0, 0), "__minus".to_string())),
           Box::new(Expression::Literal((0, 0), Literal::Int(2))),
         )),
       ),
@@ -659,7 +659,7 @@ mod tests {
         (0, 0),
         Box::from(Expression::Application(
           (0, 3),
-          Box::from(Expression::Ref((0, 1), "__internal__minus".to_string())),
+          Box::from(Expression::Ref((0, 1), "__minus".to_string())),
           Box::from(Expression::Ref((1, 2), "n".to_string())),
         )),
         Box::from(Expression::Ref((0, 0), "string".to_string())),
