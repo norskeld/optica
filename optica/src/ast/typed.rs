@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::fmt::{Debug, Error, Formatter};
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -309,6 +309,63 @@ impl Value {
   }
 }
 
+impl fmt::Display for Value {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      | Value::Unit => write!(f, "()"),
+      | Value::Number(it) => write!(f, "{it}"),
+      | Value::Int(it) => write!(f, "{it}"),
+      | Value::Float(it) => write!(f, "{it}"),
+      | Value::String(it) => write!(f, "\"{it}\""),
+      | Value::Char(it) => write!(f, "'{it}'"),
+      | Value::List(items) => {
+        write!(f, "[")?;
+
+        for (index, item) in items.iter().enumerate() {
+          write!(f, "{item}")?;
+
+          if index != items.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        write!(f, "]")
+      },
+      | Value::Tuple(items) => {
+        write!(f, "(")?;
+
+        for (index, item) in items.iter().enumerate() {
+          write!(f, "{item}")?;
+
+          if index != items.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        write!(f, ")")
+      },
+      | Value::Adt(name, items, _) => {
+        write!(f, "{name}")?;
+
+        if !items.is_empty() {
+          write!(f, " ")?;
+        }
+
+        for (index, item) in items.iter().enumerate() {
+          write!(f, "{item}")?;
+
+          if index != items.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        Ok(())
+      },
+      | Value::Function { .. } => write!(f, "<function>"),
+    }
+  }
+}
+
 /// Values are used in `FunCall`, so they must be valid map keys.
 impl Hash for Value {
   fn hash<H: Hasher>(&self, state: &mut H) {
@@ -462,8 +519,8 @@ pub struct IntrinsicFunction {
   pub function: IntrinsicFn,
 }
 
-impl Debug for IntrinsicFunction {
-  fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+impl fmt::Debug for IntrinsicFunction {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     write!(f, "<intrinsic function '{}'>", self.name)
   }
 }
