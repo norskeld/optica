@@ -14,7 +14,7 @@ fn main() {
 
   if let Some(file) = options.file {
     match cli::read(file.as_str()) {
-      | Ok(value) => println!("{value:?}"),
+      | Ok(value) => println!("{value}"),
       | Err(err) => eprintln!("{err}"),
     }
   } else {

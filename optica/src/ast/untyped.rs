@@ -7,6 +7,7 @@ use crate::errors::LangError;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::source::{SourceCode, Span};
+use crate::typechecker::fold;
 
 /// Unevaluated expression tree.
 #[derive(Debug, Clone)]
@@ -40,6 +41,104 @@ impl Expression {
       | Expression::QualifiedRef(span, ..) => span,
       | Expression::Let(span, ..) => span,
       | Expression::Match(span, ..) => span,
+    }
+  }
+}
+
+impl fmt::Display for Expression {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      | Expression::Unit(..) => write!(f, "()"),
+      | Expression::Tuple(_, items) => {
+        write!(f, "(")?;
+
+        for (index, item) in items.iter().enumerate() {
+          write!(f, "{item}")?;
+
+          if index != items.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        write!(f, ")")
+      },
+      | Expression::List(_, items) => {
+        write!(f, "[")?;
+
+        for (index, item) in items.iter().enumerate() {
+          write!(f, "{item}")?;
+
+          if index != items.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        write!(f, "]")
+      },
+      | Expression::QualifiedRef(_, paths, name) => {
+        for path in paths {
+          write!(f, "{path}.")?
+        }
+
+        write!(f, "{name}")
+      },
+      | Expression::Match(_, expression, branches) => {
+        write!(f, "match {expression} with (")?;
+
+        for (index, (pattern, expression)) in branches.iter().enumerate() {
+          write!(f, "{pattern} = {expression}")?;
+
+          if index != branches.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        write!(f, ")")
+      },
+      | Expression::If(_, cond, then_, else_) => {
+        write!(f, "if {cond} then {then_} else {else_}")
+      },
+      | Expression::Lambda(_, patterns, expression) => {
+        write!(f, "\\")?;
+
+        for (index, item) in patterns.iter().enumerate() {
+          write!(f, "{item}")?;
+
+          if index != patterns.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        write!(f, " -> {expression}")
+      },
+      | Expression::Application(_, a, b) => write!(f, "({a} {b})"),
+      | Expression::Let(_, let_defs, expression) => {
+        write!(f, "let (")?;
+
+        for (index, item) in let_defs.iter().enumerate() {
+          write!(f, "{item}")?;
+
+          if index != let_defs.len() - 1 {
+            write!(f, ", ")?;
+          }
+        }
+
+        write!(f, ") in ({expression})")
+      },
+      | Expression::OperatorChain(_, expressions, ops) => {
+        let tree = fold::create_expression_tree(expressions, ops);
+
+        match tree {
+          | Ok(expression_tree) => {
+            write!(f, "{expression_tree:?}")
+          },
+          | Err(err) => {
+            write!(f, "Invalid Tree: {err:?}")
+          },
+        }
+      },
+      | Expression::Literal(_, literal) => write!(f, "{literal}"),
+      | Expression::Ref(_, name) => write!(f, "{name}"),
     }
   }
 }
@@ -137,6 +236,15 @@ pub enum Let {
   Pattern(Pattern, Expression),
 }
 
+impl fmt::Display for Let {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match self {
+      | Let::Definition(definition) => write!(f, "{definition}"),
+      | Let::Pattern(pattern, expression) => write!(f, "{pattern} = {expression}"),
+    }
+  }
+}
+
 /// A value literal. Bools will be handled in later stages.
 #[derive(Debug, Clone)]
 pub enum Literal {
@@ -144,6 +252,17 @@ pub enum Literal {
   Float(Float),
   String(String),
   Char(char),
+}
+
+impl fmt::Display for Literal {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      | Literal::Int(value) => write!(f, "{value}"),
+      | Literal::Float(value) => write!(f, "{value}"),
+      | Literal::String(value) => write!(f, "{value}"),
+      | Literal::Char(value) => write!(f, "{value}"),
+    }
+  }
 }
 
 /// [Hash] implementation for function memoization. This is needed to handle floats.
@@ -206,6 +325,12 @@ impl Pattern {
       | Pattern::LitString(span, _) => span,
       | Pattern::LitChar(span, _) => span,
     }
+  }
+}
+
+impl fmt::Display for Pattern {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{self}")
   }
 }
 
@@ -451,4 +576,10 @@ pub struct Definition {
   pub name: String,
   pub patterns: Vec<Pattern>,
   pub expression: Expression,
+}
+
+impl fmt::Display for Definition {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{self}")
+  }
 }
